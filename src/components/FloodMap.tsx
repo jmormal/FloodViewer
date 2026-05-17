@@ -33,21 +33,10 @@ export function FloodMap() {
     } as any);
   }, [dataset]);
 
-  const colorBuffer = useMemo(() => {
-    if (!precomputedColors) return null;
-    const src = precomputedColors[activeProperty]?.[currentFrame];
-    if (!src) return null;
-
-    const alpha = Math.round(opacity * theme.layer.alphaScale);
-    const buf = new Uint8Array(src);
-    for (let i = 3; i < buf.length; i += 4) {
-      if (buf[i] > 0) buf[i] = alpha;
-    }
-    return buf;
-  }, [precomputedColors, currentFrame, activeProperty, opacity]);
-
   const layers = useMemo(() => {
-    if (!triangles || !colorBuffer) return [];
+    if (!triangles || !precomputedColors) return [];
+    const src = precomputedColors[activeProperty]?.[currentFrame];
+    if (!src) return [];
 
     return [
       new SolidPolygonLayer({
@@ -56,9 +45,12 @@ export function FloodMap() {
         getPolygon: (d: any) => d,
         getFillColor: (_d: any, { index }: { index: number }) => {
           const off = index * 4;
-          return [colorBuffer[off], colorBuffer[off + 1], colorBuffer[off + 2], colorBuffer[off + 3]];
+          return [src[off], src[off + 1], src[off + 2], src[off + 3]];
         },
-        updateTriggers: { getFillColor: colorBuffer },
+        updateTriggers: {
+          getFillColor: [currentFrame, activeProperty],
+        },
+        opacity: opacity,
         pickable: true,
         extruded: false,
         material: false,
@@ -70,7 +62,14 @@ export function FloodMap() {
         },
       }),
     ];
-  }, [triangles, colorBuffer, setSelectedTriangle]);
+  }, [
+    triangles,
+    precomputedColors,
+    currentFrame,
+    activeProperty,
+    opacity,
+    setSelectedTriangle,
+  ]);
 
   const renderTooltip = ({ object, index }: any) => {
     if (object == null || index < 0 || !dataset) return null;
@@ -80,7 +79,9 @@ export function FloodMap() {
     if (ci == null || ci < 0) return null;
     const legend = dataset.legend[activeProperty];
     const cls = legend?.classes[ci];
-    return cls ? `${legend.label}\n${cls.min} – ${cls.max}` : null;
+    return cls
+      ? `${legend.label}\n${cls.min} – ${cls.max}`
+      : null;
   };
 
   return (
