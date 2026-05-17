@@ -77,4 +77,31 @@ export function precomputeAllColors(
   }
 
   return result;
+}/**
+ * Build per-triangle class-index histories for all properties.
+ * Returns { property: Int8Array(ntri × nframes) }.
+ * Access: histories[prop][triIndex * nframes + frameIndex]
+ */
+export function buildTriangleHistories(
+  dataset: FloodDataset,
+  colorLUT: ColorLUT,
+): Record<string, Int8Array> {
+  const { ntriangles: ntri, properties, nframes } = dataset.meta;
+  const cache = createFrameCache(nframes);
+  const result: Record<string, Int8Array> = {};
+
+  for (const prop of properties) {
+    const hist = new Int8Array(ntri * nframes);
+    for (let f = 0; f < nframes; f++) {
+      const decoded = decodeFrame(dataset, f, cache);
+      const classes = decoded[prop] as Int8Array;
+      const offset = f; // interleave by frame for cache-friendly per-triangle reads
+      for (let i = 0; i < ntri; i++) {
+        hist[i * nframes + offset] = classes[i];
+      }
+    }
+    result[prop] = hist;
+  }
+
+  return result;
 }

@@ -2,7 +2,7 @@
  *  FloodProvider — owns all mutable state
  * ───────────────────────────────────────────── */
 
-import React, { useReducer, useCallback, useMemo, useRef, useEffect } from "react";
+import React, { useReducer, useMemo, useRef, useEffect } from "react";
 import {
   FloodStateContext,
   FloodActionsContext,
@@ -13,7 +13,7 @@ import type { FloodDataset, DecodedFrame } from "../types/flood";
 import { buildTrianglePolygons } from "../utils/mesh";
 import { createFrameCache, decodeFrame as decodeFrameUtil } from "../utils/decode";
 import { theme } from "../config/theme";
-import { buildColorLUT, precomputeAllColors } from "../utils/colors";
+import { buildColorLUT, precomputeAllColors, buildTriangleHistories } from "../utils/colors";
 
 // ── Action types ──
 type Action =
@@ -23,7 +23,8 @@ type Action =
   | { type: "SET_OPACITY"; opacity: number }
   | { type: "STEP_FRAME"; delta: number }
   | { type: "TOGGLE_PLAY" }
-  | { type: "CYCLE_SPEED" };
+  | { type: "CYCLE_SPEED" }
+  | { type: "SELECT_TRI"; index: number | null };
 
 const initialState: FloodState = {
   dataset: null,
@@ -31,12 +32,14 @@ const initialState: FloodState = {
   colorLUT: null,
   frameCache: null,
   precomputedColors: null,
+  triangleHistories: null,
   fileSize: 0,
   activeProperty: "depth",
   currentFrame: 0,
   opacity: theme.layer.defaultOpacity,
   isPlaying: false,
   playbackSpeed: 1,
+  selectedTriangle: null,
 };
 
 function reducer(state: FloodState, action: Action): FloodState {
@@ -46,16 +49,19 @@ function reducer(state: FloodState, action: Action): FloodState {
       const cache = createFrameCache();
       const lut = buildColorLUT(ds);
       const precomputed = precomputeAllColors(ds, lut);
+      const histories = buildTriangleHistories(ds);
       return {
         ...state,
         dataset: ds,
         triangles: buildTrianglePolygons(ds.mesh, ds.meta.ntriangles),
         colorLUT: lut,
         precomputedColors: precomputed,
+        triangleHistories: histories,
         frameCache: cache,
         fileSize: action.fileSize,
         activeProperty: ds.meta.properties[0] || "depth",
         currentFrame: 0,
+        selectedTriangle: null,
         isPlaying: false,
         playbackSpeed: 1,
       };
@@ -80,6 +86,8 @@ function reducer(state: FloodState, action: Action): FloodState {
       const next = steps[(idx + 1) % steps.length];
       return { ...state, playbackSpeed: next };
     }
+    case "SELECT_TRI":
+      return { ...state, selectedTriangle: action.index };
     default:
       return state;
   }
@@ -89,38 +97,13 @@ export function FloodProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ── Playback loop ──
-  useEffect(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-
-    if (state.isPlaying && state.dataset) {
-      const ms = Math.max(
-        theme.playback.minInterval,
-        theme.playback.baseInterval / state.playbackSpeed,
-      );
-      intervalRef.current = setInterval(() => {
-        dispatch({
-          type: "SET_FRAME",
-          frame: -1, // sentinel — we'll fix this in a wrapper
-        });
-      }, ms);
-    }
-
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [state.isPlaying, state.playbackSpeed, state.dataset]);
-
-  // We need a ref-based approach for the interval callback
-  // because dispatch inside setInterval captures stale state.
+  // Ref-based approach for the interval callback
   const frameRef = useRef(state.currentFrame);
   const maxFrameRef = useRef(0);
   frameRef.current = state.currentFrame;
   if (state.dataset) maxFrameRef.current = state.dataset.frames.length - 1;
 
+  // ── Playback loop ──
   useEffect(() => {
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
@@ -160,6 +143,8 @@ export function FloodProvider({ children }: { children: React.ReactNode }) {
         dispatch({ type: "TOGGLE_PLAY" }),
       cycleSpeed: () =>
         dispatch({ type: "CYCLE_SPEED" }),
+      setSelectedTriangle: (index: number | null) =>
+        dispatch({ type: "SELECT_TRI", index }),
 
       decodeFrame: (index: number): DecodedFrame | null => {
         if (!state.dataset || !state.frameCache) return null;

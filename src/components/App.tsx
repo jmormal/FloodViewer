@@ -12,6 +12,7 @@ import { TopBar } from "./TopBar";
 import { ControlPanel } from "./ControlPanel";
 import { Legend } from "./Legend";
 import { FileSizeBadge } from "./FileSizeBadge";
+import { TriangleHistory } from "./TriangleHistory";
 
 /** Inner shell — consumes context */
 function AppShell() {
@@ -23,20 +24,18 @@ function AppShell() {
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-[#0a0e17]">
-      {/* Always render map (shows basemap before data loads) */}
       <FloodMap />
 
-      {/* HUD overlays — only visible when data is loaded */}
       {isLoaded && (
         <>
           <TopBar />
           <ControlPanel />
           <Legend />
           <FileSizeBadge />
+          <TriangleHistory />
         </>
       )}
 
-      {/* File upload screen — visible until data loads */}
       {!isLoaded && !loading && (
         <FileDrop
           onLoadStart={() => {
@@ -51,7 +50,6 @@ function AppShell() {
         />
       )}
 
-      {/* Loading spinner */}
       {loading && <LoadingOverlay message={loadMsg} />}
     </div>
   );

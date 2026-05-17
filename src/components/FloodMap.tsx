@@ -1,3 +1,7 @@
+/* ─────────────────────────────────────────────
+ *  FloodMap — DeckGL + precomputed color buffers
+ * ───────────────────────────────────────────── */
+
 import { useMemo, useState, useEffect } from "react";
 import DeckGL from "@deck.gl/react";
 import Map from "react-map-gl/maplibre";
@@ -13,7 +17,7 @@ export function FloodMap() {
     dataset, triangles, precomputedColors,
     currentFrame, activeProperty, opacity,
   } = useFloodState();
-  const { decodeFrame } = useFloodActions();
+  const { decodeFrame, setSelectedTriangle } = useFloodActions();
 
   const [initialView, setInitialView] = useState(theme.defaultView);
 
@@ -59,9 +63,14 @@ export function FloodMap() {
         extruded: false,
         material: false,
         parameters: { depthTest: false },
+        onClick: (info: any) => {
+          if (info.index >= 0) {
+            setSelectedTriangle(info.index);
+          }
+        },
       }),
     ];
-  }, [triangles, colorBuffer]);
+  }, [triangles, colorBuffer, setSelectedTriangle]);
 
   const renderTooltip = ({ object, index }: any) => {
     if (object == null || index < 0 || !dataset) return null;

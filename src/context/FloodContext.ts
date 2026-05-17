@@ -1,9 +1,5 @@
 /* ─────────────────────────────────────────────
  *  FloodContext — shared app state
- *
- *  Holds the loaded dataset, current property/frame,
- *  pre-built geometry, and color tables so every
- *  component can read from one place.
  * ───────────────────────────────────────────── */
 
 import { createContext, useContext } from "react";
@@ -19,11 +15,12 @@ export interface FloodState {
   colorLUT: ColorLUT | null;
   /** Frame decode cache */
   frameCache: ReturnType<typeof createFrameCache> | null;
-  /** File size in bytes (0 for demo) */
-  fileSize: number;
-
   /** Precomputed RGBA buffers: property → frame[] → Uint8Array */
   precomputedColors: Record<string, Uint8Array[]> | null;
+  /** Per-triangle history: property → Int8Array(ntri × nframes) */
+  triangleHistories: Record<string, Int8Array> | null;
+  /** File size in bytes (0 for demo) */
+  fileSize: number;
 
   /** Currently active property key */
   activeProperty: string;
@@ -35,6 +32,9 @@ export interface FloodState {
   /** Playback state */
   isPlaying: boolean;
   playbackSpeed: number;
+
+  /** Currently selected triangle index */
+  selectedTriangle: number | null;
 }
 
 export interface FloodActions {
@@ -45,6 +45,7 @@ export interface FloodActions {
   stepFrame: (delta: number) => void;
   togglePlay: () => void;
   cycleSpeed: () => void;
+  setSelectedTriangle: (index: number | null) => void;
 
   /** Decode a frame (uses cache) */
   decodeFrame: (index: number) => DecodedFrame | null;
