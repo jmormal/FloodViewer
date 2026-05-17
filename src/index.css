@@ -1,0 +1,108 @@
+/* ─────────────────────────────────────────────
+ *  Global styles — Tailwind + custom components
+ *
+ *  Edit the @theme block to reskin the app.
+ *  Component classes (.panel, .slider, etc.) are
+ *  below so individual components stay clean.
+ * ───────────────────────────────────────────── */
+
+@import "tailwindcss";
+
+@theme {
+  --color-accent: #5ebbff;
+  --color-dim: #8892a4;
+  --color-surface: rgba(15, 20, 30, 0.92);
+  --color-border: rgba(94, 187, 255, 0.15);
+  --color-border-hover: rgba(94, 187, 255, 0.35);
+  --color-track: #1e2738;
+
+  --font-family-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-family-sans: "DM Sans", system-ui, sans-serif;
+}
+
+/* ── Import fonts ── */
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=DM+Sans:wght@400;500;600;700&display=swap");
+
+/* ── Base ── */
+body {
+  font-family: var(--font-family-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Glass panel (used on TopBar, ControlPanel, Legend, Badge) ── */
+.panel {
+  background: var(--color-surface);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+}
+
+/* ── Control labels ── */
+.ctrl-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--color-dim);
+  margin-bottom: 8px;
+}
+
+/* ── Range slider ── */
+.slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-track);
+  outline: none;
+  cursor: pointer;
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  border: 2px solid #fff;
+  box-shadow: 0 0 8px rgba(94, 187, 255, 0.5);
+  cursor: grab;
+}
+
+.slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  border: 2px solid #fff;
+  cursor: grab;
+}
+
+/* ── Transport buttons (play, prev, next) ── */
+.transport-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  font-size: 18px;
+  line-height: 1;
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  background: rgba(94, 187, 255, 0.1);
+  color: var(--color-accent);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.transport-btn:hover {
+  background: rgba(94, 187, 255, 0.25);
+  border-color: var(--color-border-hover);
+}
+
+/* ── MapLibre overrides ── */
+.maplibregl-ctrl-attrib {
+  font-size: 10px !important;
+}
