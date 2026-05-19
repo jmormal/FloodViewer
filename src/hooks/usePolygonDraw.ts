@@ -1,197 +1,206 @@
 /* ─────────────────────────────────────────────
- *  usePolygonDraw — lightweight polygon drawing with pure DeckGL layers
+ *  usePolygonDraw — DeckGL drawing layers + handlers
  *
- *  No external drawing library needed. Tracks click positions,
- *  renders guides, closes on double-click or click-near-first-point.
+ *  Persistent state (features, selection, type)
+ *  lives in SimulationContext.
+ *
+ *  Ephemeral state (in-progress points, cursor)
+ *  stays local — no reason to persist them.
  * ───────────────────────────────────────────── */
 
 import { useState, useCallback, useRef, useMemo } from "react";
 import { PathLayer, ScatterplotLayer, SolidPolygonLayer } from "@deck.gl/layers";
-import * as turf from "@turf/turf";
-import type { FeatureCollection, Feature, Polygon } from "geojson";
+import type { Feature, Polygon } from "geojson";
+import {
+  useSimulationState,
+  useSimulationActions,
+} from "../context/SimulationContext";
+import {
+  POLYGON_TYPES,
+  defaultPropsForType,
+} from "../config/polygonTypes";
 
 /* ── Types ───────────────────────────────────── */
 export type Coord = [number, number];
 
-export interface DrawState {
-  /** Completed polygons as GeoJSON */
-  features: FeatureCollection;
-  /** Whether the user is actively placing vertices */
-  isDrawing: boolean;
-  /** Total area of completed polygons in m² */
-  areaSqM: number | null;
-}
-
-export interface DrawActions {
-  /** Enter polygon-drawing mode */
-  startDrawing: () => void;
-  /** Exit drawing mode (keeps completed polygons) */
-  stopDrawing: () => void;
-  /** Delete all completed polygons */
-  clearAll: () => void;
-}
-
 /* ── Config ──────────────────────────────────── */
-const CLOSE_PX = 12;           // pixel radius to snap-close on first vertex
-const DBL_CLICK_MS = 300;      // max ms between clicks to count as double-click
-const MIN_VERTICES = 3;        // minimum points to form a polygon
+const CLOSE_PX = 12;
+const DBL_CLICK_MS = 300;
+const MIN_VERTICES = 3;
 
-/* ── Colours ─────────────────────────────────── */
-const COL_FILL        = [255, 107, 107, 30]  as any;
-const COL_STROKE      = [255, 107, 107, 200] as any;
-const COL_FILL_CURSOR = [255, 107, 107, 12]  as any;
-const COL_VERTEX      = [255, 255, 255, 255]  as any;
-const COL_VERTEX_RING = [251, 176, 59, 255]   as any;
-const COL_FIRST_PT    = [59, 178, 208, 255]   as any;
+/* ── Fallback colours ────────────────────────── */
+const COL_FILL_CURSOR = [255, 255, 255, 12] as any;
+const COL_VERTEX = [255, 255, 255, 255] as any;
+const COL_VERTEX_RING = [251, 176, 59, 255] as any;
+const COL_FIRST_PT = [59, 178, 208, 255] as any;
+const COL_EDGE_ACTIVE = [251, 176, 59, 255] as any;
+const COL_EDGE_SEL = [0, 220, 255, 255] as any;
+
+/* ── Helpers ─────────────────────────────────── */
+
+function typeColor(
+  typeKey: string | undefined,
+  which: "fill" | "stroke" | "fillSelected",
+): any {
+  const def = typeKey ? POLYGON_TYPES[typeKey] : undefined;
+  if (def) return def.color[which];
+  if (which === "fill") return [255, 107, 107, 30];
+  if (which === "fillSelected") return [255, 107, 107, 60];
+  return [255, 107, 107, 200];
+}
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 
 export function usePolygonDraw() {
-  /* ── State ─────────────────────────────────── */
-  const [isDrawing, setIsDrawing] = useState(false);
+  /* ── Context (persistent state) ────────────── */
+  const simState = useSimulationState();
+  const simActions = useSimulationActions();
+
+  const {
+    features,
+    isDrawing,
+    activeType,
+    selectedFeatureIndex,
+    selectedEdgeIndex,
+  } = simState;
+
+  /* ── Local ephemeral state ─────────────────── */
   const [points, setPoints] = useState<Coord[]>([]);
   const [cursor, setCursor] = useState<Coord | null>(null);
-  const [features, setFeatures] = useState<FeatureCollection>({
-    type: "FeatureCollection",
-    features: [],
-  });
-  const [areaSqM, setAreaSqM] = useState<number | null>(null);
-
   const lastClickMs = useRef(0);
 
-  /* ── Helpers ───────────────────────────────── */
-  const recalcArea = useCallback((fc: FeatureCollection) => {
-    if (fc.features.length === 0) {
-      setAreaSqM(null);
-    } else {
-      setAreaSqM(Math.round(turf.area(fc) * 100) / 100);
-    }
-  }, []);
-
+  /* ── Finish polygon → dispatch to context ──── */
   const finishPolygon = useCallback(
-    (pts: Coord[]) => {
+    (pts: Coord[], typeKey: string) => {
       if (pts.length < MIN_VERTICES) return;
-      const ring = [...pts, pts[0]]; // close the ring
+      const ring = [...pts, pts[0]];
+      const props = defaultPropsForType(typeKey);
       const feature: Feature<Polygon> = {
         type: "Feature",
-        properties: {},
+        properties: { ...props, edges: [] },
         geometry: { type: "Polygon", coordinates: [ring] },
       };
-      setFeatures((prev) => {
-        const next: FeatureCollection = {
-          type: "FeatureCollection",
-          features: [...prev.features, feature],
-        };
-        recalcArea(next);
-        return next;
-      });
+      simActions.addFeature(feature);
       setPoints([]);
-      setIsDrawing(false);
+      setCursor(null);
     },
-    [recalcArea],
+    [simActions],
   );
 
-  /* ── Public actions ────────────────────────── */
-  const startDrawing = useCallback(() => {
-    setPoints([]);
-    setCursor(null);
-    setIsDrawing(true);
-  }, []);
-
-  const stopDrawing = useCallback(() => {
-    setPoints([]);
-    setCursor(null);
-    setIsDrawing(false);
-  }, []);
-
-  const clearAll = useCallback(() => {
-    setFeatures({ type: "FeatureCollection", features: [] });
-    setPoints([]);
-    setCursor(null);
-    setAreaSqM(null);
-    setIsDrawing(false);
-  }, []);
-
-  /* ── Deck event handlers ───────────────────── */
-
-  /**
-   * Call from <DeckGL onClick={handleClick}>
-   * `info.coordinate` is [lng, lat]; `event` is the native PointerEvent.
-   */
+  /* ── Click handler ─────────────────────────── */
   const handleClick = useCallback(
-    (info: any, event: any) => {
-      if (!isDrawing || !info.coordinate) return;
+    (info: any, _event: any) => {
+      if (!isDrawing) {
+        // Click on empty space → deselect
+        if (
+          !info.layer ||
+          (info.layer.id !== "draw-completed-fill" &&
+            info.layer.id !== "draw-active-edges")
+        ) {
+          simActions.setSelectedFeatureIndex(null);
+          simActions.setSelectedEdgeIndex(null);
+        }
+        return;
+      }
+      if (!info.coordinate) return;
 
       const now = Date.now();
       const isDblClick = now - lastClickMs.current < DBL_CLICK_MS;
       lastClickMs.current = now;
-
       const coord: Coord = [info.coordinate[0], info.coordinate[1]];
 
+      // Double-click → close
       if (isDblClick && points.length >= MIN_VERTICES) {
-        finishPolygon(points);
-        return;
+        return finishPolygon(points, activeType!);
       }
 
-      // Snap-close: click near first point
+      // Close to first point → close
       if (points.length >= MIN_VERTICES) {
         const [sx, sy] = info.viewport?.project(points[0]) ?? [0, 0];
         const [cx, cy] = info.viewport?.project(coord) ?? [0, 0];
-        const dist = Math.hypot(sx - cx, sy - cy);
-        if (dist < CLOSE_PX) {
-          finishPolygon(points);
-          return;
+        if (Math.hypot(sx - cx, sy - cy) < CLOSE_PX) {
+          return finishPolygon(points, activeType!);
         }
       }
 
       setPoints((prev) => [...prev, coord]);
     },
-    [isDrawing, points, finishPolygon],
+    [isDrawing, points, finishPolygon, activeType, simActions],
   );
 
-  /**
-   * Call from <DeckGL onHover={handleHover}>
-   * Tracks cursor position so we can draw the tentative closing line.
-   */
+  /* ── Hover handler ─────────────────────────── */
   const handleHover = useCallback(
     (info: any) => {
-      if (!isDrawing || !info.coordinate) {
-        setCursor(null);
-        return;
-      }
+      if (!isDrawing || !info.coordinate) return setCursor(null);
       setCursor([info.coordinate[0], info.coordinate[1]]);
     },
     [isDrawing],
   );
 
-  /* ── Layers ────────────────────────────────── */
+  /* ── Cancel drawing: also clear local state ── */
+  const stopDrawing = useCallback(() => {
+    simActions.stopDrawing();
+    setPoints([]);
+    setCursor(null);
+  }, [simActions]);
+
+  /* ── Edge segments for selected polygon ────── */
+  const selectedTypeDef = useMemo(() => {
+    if (selectedFeatureIndex === null || !features.features[selectedFeatureIndex])
+      return null;
+    const typeKey = features.features[selectedFeatureIndex].properties?._type;
+    return typeKey ? POLYGON_TYPES[typeKey] : null;
+  }, [features, selectedFeatureIndex]);
+
+  const hasEdgeEditing = selectedTypeDef?.edgeProperties != null;
+
+  const activeEdges = useMemo(() => {
+    if (!hasEdgeEditing || selectedFeatureIndex === null) return [];
+    const feat = features.features[selectedFeatureIndex];
+    if (!feat) return [];
+    const ring = feat.geometry.coordinates[0];
+    return ring.slice(0, -1).map((pt: any, i: number) => ({
+      polyIdx: selectedFeatureIndex,
+      edgeIdx: i,
+      path: [pt, ring[i + 1]],
+    }));
+  }, [features, selectedFeatureIndex, hasEdgeEditing]);
+
+  /* ── DeckGL Layers ─────────────────────────── */
   const drawLayers = useMemo(() => {
     const result: any[] = [];
 
-    /* Completed polygons — fill + outline */
+    /* ─ Completed polygons ─ */
     if (features.features.length > 0) {
-      const polys = features.features.map(
-        (f: any) => f.geometry.coordinates[0],
-      );
       result.push(
         new SolidPolygonLayer({
           id: "draw-completed-fill",
-          data: polys,
-          getPolygon: (d: any) => d,
-          getFillColor: COL_FILL,
-          getLineColor: COL_STROKE,
-          lineWidthMinPixels: 2,
-          pickable: false,
+          data: features.features,
+          getPolygon: (d: any) => d.geometry.coordinates[0],
+          getFillColor: (d: any, { index }: { index: number }) =>
+            index === selectedFeatureIndex
+              ? typeColor(d.properties?._type, "fillSelected")
+              : typeColor(d.properties?._type, "fill"),
+          pickable: !isDrawing,
+          autoHighlight: !isDrawing,
+          highlightColor: [255, 255, 255, 20],
+          onClick: (info: any) => {
+            if (info.index !== -1) {
+              simActions.setSelectedFeatureIndex(info.index);
+              return true;
+            }
+          },
+          updateTriggers: { getFillColor: [selectedFeatureIndex] },
           parameters: { depthTest: false },
         }),
       );
-      // Outline on top
+
       result.push(
         new PathLayer({
-          id: "draw-completed-outline",
-          data: polys,
-          getPath: (d: any) => d,
-          getColor: COL_STROKE,
+          id: "draw-completed-borders",
+          data: features.features,
+          getPath: (d: any) => d.geometry.coordinates[0],
+          getColor: (d: any) => typeColor(d.properties?._type, "stroke"),
           getWidth: 2,
           widthUnits: "pixels" as const,
           pickable: false,
@@ -200,51 +209,79 @@ export function usePolygonDraw() {
       );
     }
 
-    /* In-progress polygon */
+    /* ─ Edge editing for selected polygon ─ */
+    if (activeEdges.length > 0 && !isDrawing) {
+      result.push(
+        new PathLayer({
+          id: "draw-active-edges",
+          data: activeEdges,
+          getPath: (d: any) => d.path,
+          getColor: (d: any) =>
+            d.edgeIdx === selectedEdgeIndex ? COL_EDGE_SEL : COL_EDGE_ACTIVE,
+          getWidth: (d: any) =>
+            d.edgeIdx === selectedEdgeIndex ? 6 : 4,
+          widthUnits: "pixels" as const,
+          widthMinPixels: 10,
+          pickable: true,
+          autoHighlight: true,
+          highlightColor: [255, 255, 255, 255],
+          onClick: (info: any) => {
+            if (info.object) {
+              simActions.setSelectedEdgeIndex(info.object.edgeIdx);
+              return true;
+            }
+          },
+          updateTriggers: {
+            getColor: [selectedEdgeIndex],
+            getWidth: [selectedEdgeIndex],
+          },
+          parameters: { depthTest: false },
+        }),
+      );
+    }
+
+    /* ─ In-progress drawing ─ */
     if (isDrawing && points.length > 0) {
-      // Line connecting placed points + cursor
+      const strokeCol = activeType
+        ? typeColor(activeType, "stroke")
+        : [255, 107, 107, 150];
+
       const pathCoords = cursor ? [...points, cursor] : [...points];
+
       if (pathCoords.length >= 2) {
         result.push(
           new PathLayer({
             id: "draw-progress-line",
             data: [pathCoords],
             getPath: (d: any) => d,
-            getColor: COL_STROKE,
+            getColor: strokeCol,
             getWidth: 2,
             widthUnits: "pixels" as const,
             getDashArray: [6, 4],
             dashJustified: true,
-            extensions: [], // add PathStyleExtension if you want real dashes
             pickable: false,
             parameters: { depthTest: false },
           }),
         );
       }
 
-      // Tentative closing line (last point / cursor → first point)
       if (points.length >= MIN_VERTICES && cursor) {
         result.push(
           new PathLayer({
             id: "draw-close-hint",
             data: [[cursor, points[0]]],
             getPath: (d: any) => d,
-            getColor: [255, 107, 107, 80],
+            getColor: [...strokeCol.slice(0, 3), 80],
             getWidth: 1,
             widthUnits: "pixels" as const,
             pickable: false,
             parameters: { depthTest: false },
           }),
         );
-      }
-
-      // Tentative fill preview
-      if (points.length >= MIN_VERTICES && cursor) {
-        const previewRing = [...points, cursor, points[0]];
         result.push(
           new SolidPolygonLayer({
             id: "draw-progress-fill",
-            data: [previewRing],
+            data: [[...points, cursor, points[0]]],
             getPolygon: (d: any) => d,
             getFillColor: COL_FILL_CURSOR,
             pickable: false,
@@ -253,7 +290,6 @@ export function usePolygonDraw() {
         );
       }
 
-      // Vertex dots
       result.push(
         new ScatterplotLayer({
           id: "draw-vertices",
@@ -274,17 +310,23 @@ export function usePolygonDraw() {
     }
 
     return result;
-  }, [features, isDrawing, points, cursor]);
+  }, [
+    features,
+    isDrawing,
+    activeType,
+    points,
+    cursor,
+    activeEdges,
+    selectedFeatureIndex,
+    selectedEdgeIndex,
+    simActions,
+  ]);
 
-  /* ── Return ────────────────────────────────── */
   return {
-    state: { features, isDrawing, areaSqM } as DrawState,
-    actions: { startDrawing, stopDrawing, clearAll } as DrawActions,
-    /** Spread into your layers array: [...floodLayers, ...drawLayers] */
     drawLayers,
-    /** Attach to <DeckGL onClick={...}> */
     handleClick,
-    /** Attach to <DeckGL onHover={...}> */
     handleHover,
+    /** Wraps simActions.stopDrawing + clears local points/cursor */
+    stopDrawing,
   };
 }

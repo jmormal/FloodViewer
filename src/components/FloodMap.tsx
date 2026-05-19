@@ -1,8 +1,5 @@
 /* ─────────────────────────────────────────────
- *  FloodMap — DeckGL + custom polygon drawing
- *
- *  Drawing is handled by usePolygonDraw (pure DeckGL layers).
- *  No MapboxDraw, no nebula.gl, no pointer-events hacks.
+ *  FloodMap — DeckGL + polygon drawing + simulation panel
  * ───────────────────────────────────────────── */
 
 import { useMemo, useState, useEffect, useCallback } from "react";
@@ -12,18 +9,16 @@ import { SolidPolygonLayer } from "@deck.gl/layers";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import { useFloodState, useFloodActions } from "../context/FloodContext";
+import { useSimulationState } from "../context/SimulationContext";
 import { computeBounds, estimateZoom } from "../utils/mesh";
 import { theme } from "../config/theme";
 import { usePolygonDraw } from "../hooks/usePolygonDraw";
-import {
-  SimulationPanel,
-  type SimulationParams,
-} from "./SimulationPanel";
+import { SimulationPanel } from "./SimulationPanel";
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 
 export function FloodMap() {
-  /* ── Flood‑viz state ───────────────────────── */
+  /* ── Flood-viz state ───────────────────────── */
   const {
     dataset,
     triangles,
@@ -33,6 +28,9 @@ export function FloodMap() {
     opacity,
   } = useFloodState();
   const { decodeFrame, setSelectedTriangle } = useFloodActions();
+
+  /* ── Simulation state (for cursor) ─────────── */
+  const { isDrawing } = useSimulationState();
 
   const [initialView, setInitialView] = useState(theme.defaultView);
 
@@ -48,24 +46,14 @@ export function FloodMap() {
     } as any);
   }, [dataset]);
 
-  /* ── Polygon drawing ───────────────────────── */
+  /* ── Polygon drawing (reads from SimulationContext) ── */
   const {
-    state: drawState,
-    actions: drawActions,
     drawLayers,
     handleClick: drawClick,
     handleHover: drawHover,
   } = usePolygonDraw();
 
-  const { isDrawing } = drawState;
-
-  /* ── Simulation stub ───────────────────────── */
-  const handleRunSimulation = useCallback((params: SimulationParams) => {
-    console.log("▶ Run simulation", params);
-    // TODO: params.region is the GeoJSON FeatureCollection
-  }, []);
-
-  /* ── Flood‑triangle layer ──────────────────── */
+  /* ── Flood-triangle layer ──────────────────── */
   const floodLayers = useMemo(() => {
     if (!triangles || !precomputedColors) return [];
     const src = precomputedColors[activeProperty]?.[currentFrame];
@@ -101,13 +89,13 @@ export function FloodMap() {
     setSelectedTriangle,
   ]);
 
-  /* ── Combined layers: flood on bottom, draw on top ── */
+  /* ── Combined layers ───────────────────────── */
   const layers = useMemo(
     () => [...floodLayers, ...drawLayers],
     [floodLayers, drawLayers],
   );
 
-  /* ── Tooltip (flood only) ──────────────────── */
+  /* ── Tooltip ───────────────────────────────── */
   const renderTooltip = useCallback(
     ({ object, index, layer }: any) => {
       if (isDrawing) return null;
@@ -148,21 +136,7 @@ export function FloodMap() {
       >
         <Map mapStyle={theme.mapStyle} reuseMaps />
       </DeckGL>
-
-      <SimulationPanel
-        drawMode={isDrawing}
-        onToggleDrawMode={() =>
-          isDrawing ? drawActions.stopDrawing() : drawActions.startDrawing()
-        }
-        drawnFeatures={
-          drawState.features.features.length > 0
-            ? drawState.features
-            : null
-        }
-        areaSqM={drawState.areaSqM}
-        onClearDrawing={drawActions.clearAll}
-        onRunSimulation={handleRunSimulation}
-      />
+      <SimulationPanel />
     </div>
   );
 }

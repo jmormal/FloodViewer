@@ -1,37 +1,208 @@
-import { useCallback } from "react";
-import type { FeatureCollection } from "geojson";
+/* ─────────────────────────────────────────────
+ *  SimulationPanel — reads from SimulationContext
+ *
+ *  Sections:
+ *  1. Polygon type draw buttons
+ *  2. Draw-mode instructions
+ *  3. Drawn elements summary
+ *  4. Selected polygon property editor
+ *  5. Selected edge property editor
+ *  6. Simulation config (mesh, solver)
+ *  7. Action buttons (Clear / Run)
+ * ───────────────────────────────────────────── */
 
-export interface SimulationParams {
-  /** The drawn polygon(s) as GeoJSON FeatureCollection */
-  region: FeatureCollection;
-  /** Total area of drawn polygons in m² */
-  areaSqM: number;
+import React, { useState } from "react";
+import {
+  useSimulationState,
+  useSimulationActions,
+} from "../context/SimulationContext";
+import {
+  POLYGON_TYPES,
+  POLYGON_TYPE_KEYS,
+  isPropertyVisible,
+  type PropertyDef,
+} from "../config/polygonTypes";
+import { SIMULATION_PARAMS } from "../config/simulationConfig";
+
+/* ── Styles ──────────────────────────────────── */
+
+const S = {
+  panel: {
+    position: "absolute" as const,
+    top: 12,
+    right: 12,
+    zIndex: 10,
+    background: "rgba(15, 15, 20, 0.88)",
+    backdropFilter: "blur(12px)",
+    borderRadius: 10,
+    padding: 16,
+    minWidth: 270,
+    maxWidth: 300,
+    color: "#e4e4e7",
+    fontFamily: "'Inter', system-ui, sans-serif",
+    fontSize: 13,
+    boxShadow: "0 4px 24px rgba(0,0,0,0.4)",
+    border: "1px solid rgba(255,255,255,0.08)",
+    maxHeight: "calc(100vh - 24px)",
+    overflowY: "auto" as const,
+  },
+  sectionLabel: {
+    fontSize: 10,
+    textTransform: "uppercase" as const,
+    letterSpacing: "0.08em",
+    color: "#a1a1aa",
+    marginBottom: 8,
+    fontWeight: 600,
+  },
+  divider: {
+    borderTop: "1px solid rgba(255,255,255,0.08)",
+    margin: "12px 0",
+  },
+};
+
+/* ── Property Field (reused for polygon, edge, and config) ── */
+
+function PropertyField({
+  def,
+  value,
+  onChange,
+}: {
+  def: PropertyDef;
+  value: any;
+  onChange: (val: any) => void;
+}) {
+  const inputStyle: React.CSSProperties = {
+    width: "100%",
+    padding: "5px 8px",
+    background: "rgba(255,255,255,0.08)",
+    border: "1px solid rgba(255,255,255,0.12)",
+    borderRadius: 4,
+    color: "#e4e4e7",
+    fontSize: 12,
+    outline: "none",
+  };
+
+  if (def.type === "select" && def.options) {
+    return (
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ fontSize: 10, color: "#a1a1aa", marginBottom: 3 }}>
+          {def.label}
+        </div>
+        <select
+          value={value ?? def.default}
+          onChange={(e) => onChange(e.target.value)}
+          style={{ ...inputStyle, cursor: "pointer" }}
+        >
+          {def.options.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      </div>
+    );
+  }
+
+  if (def.type === "number") {
+    return (
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ fontSize: 10, color: "#a1a1aa", marginBottom: 3 }}>
+          {def.label}{" "}
+          {def.unit && <span style={{ opacity: 0.6 }}>({def.unit})</span>}
+        </div>
+        <input
+          type="number"
+          value={value ?? def.default}
+          min={def.min}
+          max={def.max}
+          step={def.step}
+          onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
+          style={inputStyle}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <div style={{ fontSize: 10, color: "#a1a1aa", marginBottom: 3 }}>
+        {def.label}
+      </div>
+      <input
+        type="text"
+        value={value ?? def.default}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={def.label}
+        style={inputStyle}
+      />
+    </div>
+  );
 }
 
-interface SimulationPanelProps {
-  drawMode: boolean;
-  onToggleDrawMode: () => void;
-  drawnFeatures: FeatureCollection | null;
-  areaSqM: number | null;
-  onClearDrawing: () => void;
-  onRunSimulation: (params: SimulationParams) => void;
+/* ── Collapsible Section ─────────────────────── */
+
+function Section({
+  label,
+  defaultOpen = true,
+  children,
+}: {
+  label: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <>
+      <div
+        onClick={() => setOpen(!open)}
+        style={{
+          ...S.sectionLabel,
+          cursor: "pointer",
+          userSelect: "none",
+          display: "flex",
+          alignItems: "center",
+          gap: 4,
+        }}
+      >
+        <span style={{ fontSize: 8, opacity: 0.6 }}>{open ? "▼" : "▶"}</span>
+        {label}
+      </div>
+      {open && children}
+    </>
+  );
 }
 
-export function SimulationPanel({
-  drawMode,
-  onToggleDrawMode,
-  drawnFeatures,
-  areaSqM,
-  onClearDrawing,
-  onRunSimulation,
-}: SimulationPanelProps) {
-  const hasPolygons =
-    drawnFeatures != null && drawnFeatures.features.length > 0;
+/* ── Main Component ──────────────────────────── */
 
-  const handleRun = useCallback(() => {
-    if (!drawnFeatures || !areaSqM) return;
-    onRunSimulation({ region: drawnFeatures, areaSqM });
-  }, [drawnFeatures, areaSqM, onRunSimulation]);
+export function SimulationPanel() {
+  const state = useSimulationState();
+  const actions = useSimulationActions();
+
+  const {
+    features,
+    isDrawing,
+    activeType,
+    selectedFeatureIndex,
+    selectedEdgeIndex,
+    areaSqM,
+    config,
+    job,
+  } = state;
+
+  const hasPolygons = features.features.length > 0;
+
+  const selectedFeature =
+    selectedFeatureIndex !== null
+      ? features.features[selectedFeatureIndex]
+      : null;
+
+  const selectedTypeKey = selectedFeature?.properties?._type as string | undefined;
+  const selectedTypeDef = selectedTypeKey ? POLYGON_TYPES[selectedTypeKey] : null;
+
+  const edgeValues =
+    selectedFeature && selectedEdgeIndex !== null
+      ? selectedFeature.properties?.edges?.[selectedEdgeIndex] || {}
+      : null;
 
   const formatArea = (m2: number) => {
     if (m2 >= 1_000_000) return `${(m2 / 1_000_000).toFixed(2)} km²`;
@@ -39,140 +210,332 @@ export function SimulationPanel({
     return `${m2.toFixed(1)} m²`;
   };
 
+  const isJobBusy = job.status === "submitting" || job.status === "meshing" || job.status === "solving";
+
   return (
-    <div
-      style={{
-        position: "absolute",
-        top: 12,
-        right: 12,
-        zIndex: 10,
-        background: "rgba(15, 15, 20, 0.88)",
-        backdropFilter: "blur(12px)",
-        borderRadius: 10,
-        padding: 16,
-        minWidth: 220,
-        color: "#e4e4e7",
-        fontFamily: "'Inter', system-ui, sans-serif",
-        fontSize: 13,
-        boxShadow: "0 4px 24px rgba(0,0,0,0.4)",
-        border: "1px solid rgba(255,255,255,0.08)",
-      }}
-    >
-      <div
-        style={{
-          fontSize: 11,
-          textTransform: "uppercase",
-          letterSpacing: "0.08em",
-          color: "#a1a1aa",
-          marginBottom: 10,
-          fontWeight: 600,
-        }}
-      >
-        Simulation
-      </div>
+    <div style={S.panel}>
+      <div style={{ ...S.sectionLabel, marginBottom: 12 }}>Simulation</div>
 
-      {/* Draw‑mode toggle */}
-      <button
-        onClick={onToggleDrawMode}
-        style={{
-          width: "100%",
-          padding: "8px 0",
-          borderRadius: 6,
-          border: drawMode
-            ? "1px solid #ff6b6b"
-            : "1px solid rgba(255,255,255,0.15)",
-          background: drawMode ? "rgba(255,107,107,0.15)" : "transparent",
-          color: drawMode ? "#ff6b6b" : "#e4e4e7",
-          cursor: "pointer",
-          fontWeight: 500,
-          fontSize: 13,
-          transition: "all 0.15s",
-        }}
-      >
-        {drawMode ? "✕  Exit Draw Mode" : "✎  Draw Region"}
-      </button>
-
-      {drawMode && (
-        <div
-          style={{
-            marginTop: 8,
-            padding: "6px 8px",
-            background: "rgba(255,107,107,0.08)",
-            borderRadius: 6,
-            fontSize: 11,
-            color: "#a1a1aa",
-            lineHeight: 1.5,
-          }}
-        >
-          Click the map to place polygon vertices. Double‑click or click the
-          first point to close.
-        </div>
-      )}
-
-      {/* Area readout */}
-      {hasPolygons && areaSqM != null && (
-        <div style={{ marginTop: 12 }}>
-          <div style={{ color: "#a1a1aa", fontSize: 11, marginBottom: 2 }}>
-            Selected area
-          </div>
-          <div style={{ fontSize: 18, fontWeight: 600, color: "#fff" }}>
-            {formatArea(areaSqM)}
-          </div>
-          <div style={{ fontSize: 11, color: "#71717a" }}>
-            {drawnFeatures.features.length} polygon
-            {drawnFeatures.features.length > 1 ? "s" : ""}
-          </div>
-        </div>
-      )}
-
-      {/* Action buttons */}
-      {hasPolygons && (
+      {/* ── 1. Type Buttons ──────────────────── */}
+      {!isDrawing && (
         <div
           style={{
             display: "flex",
-            gap: 8,
-            marginTop: 14,
+            flexWrap: "wrap",
+            gap: 6,
+            marginBottom: 12,
           }}
         >
-          <button
-            onClick={onClearDrawing}
-            style={{
-              flex: 1,
-              padding: "8px 0",
-              borderRadius: 6,
-              border: "1px solid rgba(255,255,255,0.12)",
-              background: "transparent",
-              color: "#a1a1aa",
-              cursor: "pointer",
-              fontSize: 12,
-            }}
-          >
-            Clear
-          </button>
-          <button
-            onClick={handleRun}
-            style={{
-              flex: 2,
-              padding: "8px 0",
-              borderRadius: 6,
-              border: "none",
-              background: "#3b82f6",
-              color: "#fff",
-              cursor: "pointer",
-              fontWeight: 600,
-              fontSize: 13,
-              transition: "background 0.15s",
-            }}
-            onMouseEnter={(e) =>
-              ((e.target as HTMLElement).style.background = "#2563eb")
-            }
-            onMouseLeave={(e) =>
-              ((e.target as HTMLElement).style.background = "#3b82f6")
-            }
-          >
-            Run Simulation
-          </button>
+          {POLYGON_TYPE_KEYS.map((key) => {
+            const def = POLYGON_TYPES[key];
+            const [r, g, b] = def.color.stroke;
+            return (
+              <button
+                key={key}
+                onClick={() => actions.startDrawing(key)}
+                disabled={isJobBusy}
+                style={{
+                  flex: "1 1 calc(50% - 3px)",
+                  padding: "7px 4px",
+                  borderRadius: 6,
+                  border: `1px solid rgba(${r},${g},${b},0.3)`,
+                  background: `rgba(${r},${g},${b},0.08)`,
+                  color: `rgb(${r},${g},${b})`,
+                  cursor: isJobBusy ? "not-allowed" : "pointer",
+                  fontSize: 11,
+                  fontWeight: 500,
+                  transition: "all 0.15s",
+                  textAlign: "center" as const,
+                  opacity: isJobBusy ? 0.4 : 1,
+                }}
+                title={def.description}
+              >
+                {def.icon} {def.label}
+              </button>
+            );
+          })}
         </div>
+      )}
+
+      {/* ── 2. Draw Mode ─────────────────────── */}
+      {isDrawing && activeType && (
+        <>
+          <button
+            onClick={actions.stopDrawing}
+            style={{
+              width: "100%",
+              padding: "8px 0",
+              borderRadius: 6,
+              border: "1px solid #ff6b6b",
+              background: "rgba(255,107,107,0.15)",
+              color: "#ff6b6b",
+              cursor: "pointer",
+              fontWeight: 500,
+              fontSize: 13,
+              marginBottom: 8,
+            }}
+          >
+            ✕ Cancel Drawing
+          </button>
+          <div
+            style={{
+              padding: "6px 8px",
+              background: `rgba(${POLYGON_TYPES[activeType].color.stroke.slice(0, 3).join(",")},0.1)`,
+              borderRadius: 6,
+              fontSize: 11,
+              color: "#a1a1aa",
+              lineHeight: 1.5,
+            }}
+          >
+            Drawing{" "}
+            <b
+              style={{
+                color: `rgb(${POLYGON_TYPES[activeType].color.stroke.slice(0, 3).join(",")})`,
+              }}
+            >
+              {POLYGON_TYPES[activeType].label}
+            </b>
+            <br />
+            Click to place vertices. Double‑click or click first point to
+            close.
+          </div>
+        </>
+      )}
+
+      {/* ── 3. Drawn Elements Summary ────────── */}
+      {hasPolygons && !isDrawing && (
+        <>
+          <div style={S.divider} />
+          <Section label="Drawn Elements">
+            <div
+              style={{
+                fontSize: 11,
+                color: "#71717a",
+                marginBottom: 8,
+                lineHeight: 1.6,
+              }}
+            >
+              {POLYGON_TYPE_KEYS.map((key) => {
+                const count = features.features.filter(
+                  (f) => f.properties?._type === key,
+                ).length;
+                if (count === 0) return null;
+                const def = POLYGON_TYPES[key];
+                const [r, g, b] = def.color.stroke;
+                return (
+                  <span key={key} style={{ marginRight: 10 }}>
+                    <span style={{ color: `rgb(${r},${g},${b})` }}>
+                      {def.icon}
+                    </span>{" "}
+                    {count} {def.label}
+                  </span>
+                );
+              })}
+              {areaSqM != null && (
+                <div
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 600,
+                    color: "#fff",
+                    marginTop: 4,
+                  }}
+                >
+                  {formatArea(areaSqM)}
+                </div>
+              )}
+            </div>
+
+            {selectedFeatureIndex === null && (
+              <div style={{ fontSize: 11, color: "#5ebbff" }}>
+                Click a polygon to edit properties.
+              </div>
+            )}
+          </Section>
+        </>
+      )}
+
+      {/* ── 4. Selected Polygon Properties ──── */}
+      {selectedFeature && selectedTypeDef && !isDrawing && (
+        <>
+          <div style={S.divider} />
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: 8,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                textTransform: "uppercase",
+                color: `rgb(${selectedTypeDef.color.stroke.slice(0, 3).join(",")})`,
+              }}
+            >
+              {selectedTypeDef.icon} {selectedTypeDef.label} #
+              {selectedFeatureIndex! + 1}
+            </div>
+            <button
+              onClick={() => actions.deleteFeature(selectedFeatureIndex!)}
+              style={{
+                padding: "2px 8px",
+                background: "rgba(255,107,107,0.15)",
+                border: "none",
+                borderRadius: 4,
+                color: "#ff6b6b",
+                fontSize: 10,
+                cursor: "pointer",
+              }}
+            >
+              Delete
+            </button>
+          </div>
+
+          {selectedTypeDef.properties.map((propDef) => {
+            if (
+              !isPropertyVisible(propDef, selectedFeature.properties || {})
+            )
+              return null;
+            return (
+              <PropertyField
+                key={propDef.key}
+                def={propDef}
+                value={selectedFeature.properties?.[propDef.key]}
+                onChange={(val) =>
+                  actions.updateFeatureProperty(
+                    selectedFeatureIndex!,
+                    propDef.key,
+                    val,
+                  )
+                }
+              />
+            );
+          })}
+
+          {selectedTypeDef.edgeProperties && selectedEdgeIndex === null && (
+            <div style={{ fontSize: 11, color: "#fbb03b", marginTop: 4 }}>
+              Click an amber edge to set boundary conditions.
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── 5. Selected Edge Properties ──────── */}
+      {selectedFeature &&
+        selectedTypeDef?.edgeProperties &&
+        selectedEdgeIndex !== null &&
+        !isDrawing && (
+          <>
+            <div style={S.divider} />
+            <div style={{ ...S.sectionLabel, color: "#00dcff" }}>
+              Edge #{selectedEdgeIndex + 1}
+            </div>
+
+            {selectedTypeDef.edgeProperties.map((propDef) => {
+              if (!isPropertyVisible(propDef, edgeValues || {})) return null;
+              return (
+                <PropertyField
+                  key={propDef.key}
+                  def={propDef}
+                  value={edgeValues?.[propDef.key]}
+                  onChange={(val) =>
+                    actions.updateEdgeProperty(
+                      selectedFeatureIndex!,
+                      selectedEdgeIndex,
+                      propDef.key,
+                      val,
+                    )
+                  }
+                />
+              );
+            })}
+          </>
+        )}
+
+      {/* ── 6. Simulation Config ─────────────── */}
+      <div style={S.divider} />
+      <Section label="Solver Config" defaultOpen={false}>
+        {SIMULATION_PARAMS.map((propDef) => (
+          <PropertyField
+            key={propDef.key}
+            def={propDef}
+            value={config[propDef.key]}
+            onChange={(val) => actions.updateConfig(propDef.key, val)}
+          />
+        ))}
+      </Section>
+
+      {/* ── 7. Action Buttons ────────────────── */}
+      {!isDrawing && (
+        <>
+          <div style={S.divider} />
+
+          {/* Job status */}
+          {job.status !== "idle" && (
+            <div
+              style={{
+                fontSize: 11,
+                color:
+                  job.status === "error"
+                    ? "#ff6b6b"
+                    : job.status === "done"
+                      ? "#22c55e"
+                      : "#5ebbff",
+                marginBottom: 8,
+              }}
+            >
+              {job.status === "submitting" && "⏳ Submitting…"}
+              {job.status === "meshing" && "⏳ Generating mesh…"}
+              {job.status === "solving" && `⏳ Solving… ${job.progress != null ? `${job.progress}%` : ""}`}
+              {job.status === "done" && `✓ Complete${job.id ? ` (${job.id})` : ""}`}
+              {job.status === "error" && `✕ Error: ${job.error}`}
+            </div>
+          )}
+
+          <div style={{ display: "flex", gap: 8 }}>
+            {hasPolygons && (
+              <button
+                onClick={actions.clearAll}
+                disabled={isJobBusy}
+                style={{
+                  flex: 1,
+                  padding: "8px 0",
+                  borderRadius: 6,
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "transparent",
+                  color: "#a1a1aa",
+                  cursor: isJobBusy ? "not-allowed" : "pointer",
+                  fontSize: 12,
+                  opacity: isJobBusy ? 0.4 : 1,
+                }}
+              >
+                Clear All
+              </button>
+            )}
+            <button
+              onClick={actions.submitSimulation}
+              disabled={!hasPolygons || isJobBusy}
+              style={{
+                flex: 2,
+                padding: "8px 0",
+                borderRadius: 6,
+                border: "none",
+                background:
+                  !hasPolygons || isJobBusy ? "#1e3a5f" : "#3b82f6",
+                color: "#fff",
+                cursor:
+                  !hasPolygons || isJobBusy ? "not-allowed" : "pointer",
+                fontWeight: 600,
+                fontSize: 13,
+                opacity: !hasPolygons || isJobBusy ? 0.5 : 1,
+              }}
+            >
+              {isJobBusy ? "Running…" : "Run Simulation"}
+            </button>
+          </div>
+        </>
       )}
     </div>
   );

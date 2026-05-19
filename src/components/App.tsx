@@ -4,6 +4,7 @@
 
 import { useState } from "react";
 import { FloodProvider } from "../context/FloodProvider";
+import { SimulationProvider } from "../context/SimulationProvider";
 import { useFloodState } from "../context/FloodContext";
 import { FloodMap } from "./FloodMap";
 import { FileDrop } from "./FileDrop";
@@ -55,11 +56,13 @@ function AppShell() {
   );
 }
 
-/** Public export — wraps everything in the provider */
+/** Public export — wraps everything in providers */
 export default function App() {
   return (
     <FloodProvider>
-      <AppShell />
+      <SimulationProvider>
+        <AppShell />
+      </SimulationProvider>
     </FloodProvider>
   );
 }
