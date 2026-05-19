@@ -18,7 +18,7 @@ export function TopBar() {
       "
     >
       <h1 className="font-mono text-sm font-semibold tracking-wide text-accent whitespace-nowrap">
-        DANA FLOOD{" "}
+        FLOOD VIEWER{" "}
         <span className="font-normal text-dim text-xs">GPU</span>
       </h1>
 

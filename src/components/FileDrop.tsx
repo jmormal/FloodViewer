@@ -65,12 +65,11 @@ export function FileDrop({ onLoadStart, onLoadEnd, onError }: FileDropProps) {
           ${dragging ? "border-accent" : "border-white/15 hover:border-accent/60"}
         `}
       >
-        <span className="block text-5xl mb-4">🌊</span>
         <h2 className="font-mono text-base font-semibold text-accent mb-2">
-          DANA Flood Viewer v3
+          Flood Viewer
         </h2>
         <p className="text-sm text-dim leading-relaxed">
-          Drop <b className="text-white/80">flood_data.json</b> or{" "}
+          Drop <b className="text-white/80">data.json</b> or{" "}
           <b className="text-white/80">.json.gz</b>
           <br />
           <small className="text-xs opacity-60">
