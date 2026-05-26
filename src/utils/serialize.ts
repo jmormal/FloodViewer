@@ -3,6 +3,10 @@
  *
  *  Groups features by their _type, strips internal
  *  keys, and bundles with simulation config.
+ *
+ *  For properties with a `_source` toggle set to
+ *  "python", the `_code` string is sent instead of
+ *  the constant value.
  * ───────────────────────────────────────────── */
 
 import type { SimulationState } from "../context/SimulationContext";
@@ -36,6 +40,11 @@ export interface FeaturePayload {
  *     elevation: [ ... ],
  *   }
  * }
+ *
+ * For Python-sourced properties, the payload contains:
+ *   { Q: { type: "python", code: "def Q(t): ..." } }
+ * instead of:
+ *   { Q: 1.0 }
  */
 export function serializePayload(state: SimulationState): SimulationPayload {
   const grouped: Record<string, FeaturePayload[]> = {};
@@ -54,16 +63,43 @@ export function serializePayload(state: SimulationState): SimulationPayload {
     delete props._type;
     delete props.edges;
 
+    // Resolve source toggles: if X_source === "python", send X as { type, code }
+    // and remove the helper keys (X_source, X_code)
+    const cleanProps: Record<string, any> = {};
+    const sourceKeys = Object.keys(props).filter((k) => k.endsWith("_source"));
+
+    for (const sk of sourceKeys) {
+      const base = sk.replace(/_source$/, "");
+      const source = props[sk];
+      const codeKey = `${base}_code`;
+
+      if (source === "python" && props[codeKey]) {
+        cleanProps[base] = { type: "python", code: props[codeKey] };
+      } else {
+        // constant — keep the numeric/scalar value as-is
+        cleanProps[base] = props[base];
+      }
+
+      // Mark consumed keys
+      delete props[sk];
+      delete props[codeKey];
+      delete props[base];
+    }
+
+    // Copy remaining (non-consumed) properties
+    for (const [k, v] of Object.entries(props)) {
+      if (!(k in cleanProps)) cleanProps[k] = v;
+    }
+
     const payload: FeaturePayload = {
       geometry: feature.geometry as any,
-      properties: props,
+      properties: cleanProps,
       edges,
     };
 
     if (grouped[typeKey]) {
       grouped[typeKey].push(payload);
     } else {
-      // Unknown type — keep it under its own key
       grouped[typeKey] = [payload];
     }
   }

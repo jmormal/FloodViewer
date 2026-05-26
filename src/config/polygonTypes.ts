@@ -11,7 +11,7 @@
 export interface PropertyDef {
   key: string;
   label: string;
-  type: "number" | "select" | "text";
+  type: "number" | "select" | "text" | "code";
   default: any;
   unit?: string;
   min?: number;
@@ -20,6 +20,10 @@ export interface PropertyDef {
   options?: { value: string; label: string }[];
   /** If set, this property only shows when another property matches a value */
   showWhen?: { key: string; value: any };
+  /** Language hint for code editor (default: "python") */
+  language?: string;
+  /** Placeholder text shown in the code editor */
+  placeholder?: string;
 }
 
 /* ── Polygon type definition ─────────────────── */
@@ -138,6 +142,16 @@ export const POLYGON_TYPES: Record<string, PolygonTypeDef> = {
     },
     properties: [
       {
+        key: "Q_source",
+        label: "Discharge Source",
+        type: "select",
+        default: "constant",
+        options: [
+          { value: "constant", label: "Constant value" },
+          { value: "python", label: "Python function" },
+        ],
+      },
+      {
         key: "Q",
         label: "Discharge (Q)",
         type: "number",
@@ -145,6 +159,16 @@ export const POLYGON_TYPES: Record<string, PolygonTypeDef> = {
         min: 0,
         step: 0.1,
         unit: "m³/s",
+        showWhen: { key: "Q_source", value: "constant" },
+      },
+      {
+        key: "Q_code",
+        label: "Q(t) Function",
+        type: "code",
+        default: "def Q(t):\n    \"\"\"Discharge in m³/s as a function of time (seconds).\"\"\"\n    return 1.0\n",
+        showWhen: { key: "Q_source", value: "python" },
+        language: "python",
+        placeholder: "def Q(t):\n    return 1.0\n",
       },
       {
         key: "velocity_direction",
@@ -178,12 +202,32 @@ export const POLYGON_TYPES: Record<string, PolygonTypeDef> = {
     },
     properties: [
       {
+        key: "rate_source",
+        label: "Rate Source",
+        type: "select",
+        default: "constant",
+        options: [
+          { value: "constant", label: "Constant value" },
+          { value: "python", label: "Python function" },
+        ],
+      },
+      {
         key: "rate",
-        label: "Rate",
+        label: "Rate s ",
         type: "number",
         default: 10,
         step: 0.5,
         unit: "mm/hr",
+        showWhen: { key: "rate_source", value: "constant" },
+      },
+      {
+        key: "rate_code",
+        label: "rate(t) Function",
+        type: "code",
+        default: "def rate(t):\n    \"\"\"Rainfall rate in mm/hr as a function of time (seconds).\"\"\"\n    return 10.0\n",
+        showWhen: { key: "rate_source", value: "python" },
+        language: "python",
+        placeholder: "def rate(t):\n    return 10.0\n",
       },
       {
         key: "label",
