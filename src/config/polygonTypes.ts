@@ -92,7 +92,7 @@ export const POLYGON_TYPES: Record<string, PolygonTypeDef> = {
         key: "boundary",
         label: "Boundary",
         type: "select",
-        default: "reflective",
+        default: "transmissive",
         options: [
           { value: "reflective", label: "Reflective (wall)" },
           { value: "transmissive", label: "Transmissive (open)" },

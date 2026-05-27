@@ -24,7 +24,7 @@ import {
 } from "../config/polygonTypes";
 import { SIMULATION_PARAMS } from "../config/simulationConfig";
 import { CodeEditorModal } from "./CodeEditorModal";
-
+import { Button } from "./buttons/Button";
 /* ── Styles ──────────────────────────────────── */
 
 const S = {
@@ -608,44 +608,20 @@ export function SimulationPanel() {
 
             <div style={{ display: "flex", gap: 8 }}>
               {hasPolygons && (
-                <button
+                <Button
                   onClick={actions.clearAll}
                   disabled={isJobBusy}
-                  style={{
-                    flex: 1,
-                    padding: "8px 0",
-                    borderRadius: 6,
-                    border: "1px solid rgba(255,255,255,0.12)",
-                    background: "transparent",
-                    color: "#a1a1aa",
-                    cursor: isJobBusy ? "not-allowed" : "pointer",
-                    fontSize: 12,
-                    opacity: isJobBusy ? 0.4 : 1,
-                  }}
+                  severity="danger"
                 >
                   Clear All
-                </button>
+                </Button>
               )}
-              <button
+              <Button
                 onClick={actions.submitSimulation}
                 disabled={!hasPolygons || isJobBusy}
-                style={{
-                  flex: 2,
-                  padding: "8px 0",
-                  borderRadius: 6,
-                  border: "none",
-                  background:
-                    !hasPolygons || isJobBusy ? "#1e3a5f" : "#3b82f6",
-                  color: "#fff",
-                  cursor:
-                    !hasPolygons || isJobBusy ? "not-allowed" : "pointer",
-                  fontWeight: 600,
-                  fontSize: 13,
-                  opacity: !hasPolygons || isJobBusy ? 0.5 : 1,
-                }}
               >
                 {isJobBusy ? "Running…" : "Run Simulation"}
-              </button>
+              </Button>
             </div>
           </>
         )}

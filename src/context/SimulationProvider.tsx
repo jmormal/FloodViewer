@@ -17,6 +17,7 @@ import {
 } from "./SimulationContext";
 import { useFloodActions } from "./FloodContext";
 import { defaultSimConfig } from "../config/simulationConfig";
+import { POLYGON_TYPES, defaultEdgeProps } from "../config/polygonTypes";
 import { serializePayload } from "../utils/serialize";
 import type { FloodDataset } from "../types/flood";
 
@@ -57,6 +58,26 @@ function calcArea(fc: { features: any[] }): number | null {
   return Math.round(turf.area(fc as any) * 100) / 100;
 }
 
+/** Attach default edge properties to a feature based on its polygon type */
+function initEdgeDefaults(feature: Feature): Feature {
+  const typeKey = feature.properties?._type;
+  if (!typeKey || !POLYGON_TYPES[typeKey]?.edgeProperties) return feature;
+
+  const coords = (feature.geometry as any)?.coordinates?.[0];
+  if (!coords || coords.length < 2) return feature;
+
+  const numEdges = coords.length - 1; // closed ring: last vertex === first
+  const defaults = defaultEdgeProps(typeKey);
+
+  return {
+    ...feature,
+    properties: {
+      ...feature.properties,
+      edges: Array.from({ length: numEdges }, () => ({ ...defaults })),
+    },
+  };
+}
+
 /**
  * Fetch result JSON (plain or gzipped) and parse it.
  * The browser handles Content-Encoding: gzip transparently,
@@ -85,9 +106,10 @@ function reducer(state: SimulationState, action: Action): SimulationState {
       return { ...state, isDrawing: false, activeType: null };
 
     case "ADD_FEATURE": {
+      const feature = initEdgeDefaults(action.feature);
       const nextFeatures = {
         type: "FeatureCollection" as const,
-        features: [...state.features.features, action.feature],
+        features: [...state.features.features, feature],
       };
       return {
         ...state,
