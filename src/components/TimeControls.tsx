@@ -12,7 +12,7 @@ export function TimeControls() {
 
   const frame = decodeFrame(currentFrame);
   const timeLabel = frame ? `${frame._t}` : "0.0";
-  const maxFrame = dataset.frames.length - 1;
+  const maxFrame = dataset.times.length - 1;
 
   return (
     <div>

@@ -1,46 +1,57 @@
-/* ─────────────────────────────────────────────
- *  Theme configuration
- *  Edit this file to reskin the entire app.
- * ───────────────────────────────────────────── */
+// src/config/theme.ts
 
 export const theme = {
-  /** MapLibre basemap style URL */
-  mapStyle: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
-
-  /** Default camera (overridden once data loads) */
+  // Default camera view (overridden when a dataset loads)
   defaultView: {
-    longitude: -0.42,
-    latitude: 39.427,
+    longitude: -0.3763,
+    latitude: 39.4699,
     zoom: 12,
     pitch: 0,
     bearing: 0,
   },
 
-  /** Playback defaults */
-  playback: {
-    /** Milliseconds per frame at 1× speed */
-    baseInterval: 350,
-    /** Fastest allowed interval (ms) */
-    minInterval: 50,
-    /** Speed multipliers the user can cycle through */
-    speedSteps: [1, 2, 4],
-  },
-
-  /** Triangle layer defaults */
+  // Missing layer config added here
   layer: {
-    defaultOpacity: 0.7,
-    /** Alpha channel max (0-255). Actual alpha = opacity × this value */
-    alphaScale: 220,
+    defaultOpacity: 0.8, // Default starting opacity (0.1 to 1.0)
   },
 
-  /** Frame decode cache size (LRU) */
-  frameCacheSize: 60,
+  // Missing playback config added here
+  playback: {
+    speedSteps: [0.5, 1, 2, 4, 8], // Multipliers for the cycle speed button
+    baseInterval: 1000,            // Base milliseconds per frame at 1x speed
+    minInterval: 50,               // Hard limit to prevent browser freezing
+  },
 
-  /** Human-friendly labels for property keys */
+  // 1. The original dark style
+  mapStyleDark: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
+
+  // 2. The new OpenStreetMap raster style
+  mapStyleOsm: {
+    version: 8,
+    sources: {
+      "osm-raster-tiles": {
+        type: "raster",
+        tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+        tileSize: 256,
+        attribution: "© OpenStreetMap contributors",
+      },
+    },
+    layers: [
+      {
+        id: "osm-raster-layer",
+        type: "raster",
+        source: "osm-raster-tiles",
+        minzoom: 0,
+        maxzoom: 19,
+      },
+    ],
+  },
+
+  // Labels used by the PropertySelector component
   propertyLabels: {
     depth: "Depth",
-    speed: "Speed",
-    momentum: "Momentum",
+    elevation: "Elevation",
     hazard: "Hazard",
+    speed: "Speed",
   } as Record<string, string>,
-} as const;
+};

@@ -1,5 +1,5 @@
 /* ─────────────────────────────────────────────
- *  FloodMap — DeckGL + polygon drawing + simulation panel
+ * FloodMap — DeckGL + polygon drawing + simulation panel
  * ───────────────────────────────────────────── */
 
 import { useMemo, useState, useEffect, useCallback } from "react";
@@ -18,6 +18,9 @@ import { SimulationPanel } from "./SimulationPanel";
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 
 export function FloodMap() {
+  /* ── Map Style State (NEW) ─────────────────── */
+  const [useOsm, setUseOsm] = useState(false);
+
   /* ── Flood-viz state ───────────────────────── */
   const {
     dataset,
@@ -36,7 +39,7 @@ export function FloodMap() {
 
   useEffect(() => {
     if (!dataset) return;
-    const bounds = computeBounds(dataset.mesh.vertices);
+    const bounds = computeBounds(dataset.vertices);
     setInitialView({
       longitude: bounds.centerLng,
       latitude: bounds.centerLat,
@@ -103,11 +106,10 @@ export function FloodMap() {
       if (object == null || index < 0 || !dataset) return null;
       const frame = decodeFrame(currentFrame);
       if (!frame) return null;
-      const ci = (frame[activeProperty] as Int8Array)?.[index];
-      if (ci == null || ci < 0) return null;
-      const legend = dataset.legend[activeProperty];
-      const cls = legend?.classes[ci];
-      return cls ? `${legend.label}\n${cls.min} – ${cls.max}` : null;
+      const tri = dataset.triangles[index] as any;
+      const val = activeProperty === "hazard" ? tri.depth[currentFrame] * tri.speed[currentFrame] : tri[activeProperty]?.[currentFrame];
+      if (!val || val < 0.01) return null;
+      return `${dataset.legend[activeProperty]?.label || activeProperty.toUpperCase()}\n${val.toFixed(2)}`;
     },
     [isDrawing, dataset, currentFrame, activeProperty, decodeFrame],
   );
@@ -125,6 +127,25 @@ export function FloodMap() {
   /* ── Render ────────────────────────────────── */
   return (
     <div className="absolute inset-0 z-0">
+
+      {/* NEW: Map Style Toggle Button (Visible only when dataset is loaded to avoid cluttering drop screen) */}
+      {dataset && (
+        <div className="absolute bottom-16 left-4 z-[1000]">
+          <button
+            onClick={() => setUseOsm(!useOsm)}
+            className="
+              panel flex items-center gap-2 px-3 py-2 
+              rounded-md border transition-all duration-200 shadow-lg
+              bg-[#0a0e17]/90 backdrop-blur-md text-xs font-medium text-white/80 
+              hover:text-white border-white/10 hover:border-accent/40
+            "
+          >
+            <span className="text-accent">{useOsm ? "🗺️" : "🌙"}</span>
+            {useOsm ? "Switch to Dark Map" : "Switch to Street Map"}
+          </button>
+        </div>
+      )}
+
       <DeckGL
         initialViewState={initialView}
         controller={{ doubleClickZoom: !isDrawing }}
@@ -134,7 +155,11 @@ export function FloodMap() {
         onClick={drawClick}
         onHover={drawHover}
       >
-        <Map mapStyle={theme.mapStyle} reuseMaps />
+        {/* Toggle between OSM and Dark style based on state */}
+        <Map
+          mapStyle={useOsm ? theme.mapStyleOsm : theme.mapStyleDark}
+          reuseMaps
+        />
       </DeckGL>
       <SimulationPanel />
     </div>

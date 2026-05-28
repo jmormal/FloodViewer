@@ -1,107 +1,61 @@
-/* ─────────────────────────────────────────────
- *  Color utilities
- * ───────────────────────────────────────────── */
 
-import type { FloodDataset, RGB, ColorLUT } from "../types/flood";
-
-import { createFrameCache, decodeFrame } from "./decode";
-/** Convert "#rrggbb" → [r, g, b] */
-export function hexToRGB(hex: string): RGB {
+import type { FloodDataset, RGB } from "../types/flood";
+const COLOR_RAMPS: Record<string, string[]> = {
+  depth: ["#f7fbff", "#c6dbef", "#6baed6", "#2171b5", "#08519c", "#08306b"],
+  speed: ["#ffffb2", "#fed976", "#fd8d3c", "#fc4e2a", "#e31a1c", "#800026"],
+  momentum: ["#f7fcf5", "#c7e9c0", "#74c476", "#31a354", "#238b45", "#00441b"],
+  hazard: ["#ffffd4", "#fee391", "#fe9929", "#d95f0e", "#993404", "#662506"],
+};
+const MAX_VALUES: Record<string, number> = { depth: 3.0, speed: 4.0, momentum: 6.0, hazard: 5.0 };
+function hexToRGB(hex: string): RGB {
   const h = hex.replace("#", "");
-  return [
-    parseInt(h.slice(0, 2), 16),
-    parseInt(h.slice(2, 4), 16),
-    parseInt(h.slice(4, 6), 16),
-  ];
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+}
+const RGB_RAMPS = Object.fromEntries(Object.entries(COLOR_RAMPS).map(([k, v]) => [k, v.map(hexToRGB)]));
+
+export function getColorForValue(prop: string, value: number): RGB | null {
+  if (value < 0.01) return null;
+  const ramp = RGB_RAMPS[prop];
+  const max = MAX_VALUES[prop];
+  const normalized = Math.max(0, Math.min(1, value / max));
+  const idx = normalized * (ramp.length - 1);
+  const i0 = Math.floor(idx);
+  const i1 = Math.min(i0 + 1, ramp.length - 1);
+  const f = idx - i0;
+  const c0 = ramp[i0];
+  const c1 = ramp[i1];
+  return [Math.round(c0[0] + f * (c1[0] - c0[0])), Math.round(c0[1] + f * (c1[1] - c0[1])), Math.round(c0[2] + f * (c1[2] - c0[2]))];
 }
 
-/**
- * Pre-build a lookup table: property → classIndex → RGB.
- * Called once when data loads so rendering is a simple array lookup.
- */
-export function buildColorLUT(dataset: FloodDataset): ColorLUT {
-  const lut: ColorLUT = {};
-
-  for (const prop of dataset.meta.properties) {
-    const entry: Record<number, RGB> = {};
-    dataset.legend[prop].classes.forEach((cls, i) => {
-      entry[i] = hexToRGB(cls.color);
-    });
-    lut[prop] = entry;
-  }
-
-  return lut;
-}
-
-
-/**
- * Pre-build RGBA color buffers for every frame × property combo.
- * Called once at load time. Returns { property: [Uint8Array per frame] }.
- * Each Uint8Array is ntri×4 (flat RGBA).
- */
-export function precomputeAllColors(
-  dataset: FloodDataset,
-  colorLUT: ColorLUT,
-): Record<string, Uint8Array[]> {
-  const { ntriangles: ntri, properties, nframes } = dataset.meta;
-  const cache = createFrameCache(nframes); // cache all
+export function precomputeAllColors(dataset: FloodDataset): Record<string, Uint8Array[]> {
+  const properties = ["depth", "speed", "momentum", "hazard"];
+  const nframes = dataset.times.length;
+  const ntri = dataset.triangles.length;
   const result: Record<string, Uint8Array[]> = {};
-
+  
   for (const prop of properties) {
-    const lut = colorLUT[prop];
-    const frames: Uint8Array[] = new Array(nframes);
-
+    result[prop] = Array.from({ length: nframes }, () => new Uint8Array(ntri * 4));
+  }
+  
+  for (let triIdx = 0; triIdx < ntri; triIdx++) {
+    const tri = dataset.triangles[triIdx] as any;
     for (let f = 0; f < nframes; f++) {
-      const decoded = decodeFrame(dataset, f, cache);
-      const classes = decoded[prop] as Int8Array;
-      const buf = new Uint8Array(ntri * 4);
-
-      for (let i = 0; i < ntri; i++) {
-        const ci = classes[i];
-        if (ci >= 0) {
-          const rgb = lut[ci];
-          if (rgb) {
-            const off = i * 4;
-            buf[off] = rgb[0];
-            buf[off + 1] = rgb[1];
-            buf[off + 2] = rgb[2];
-            buf[off + 3] = 255; // full alpha; actual alpha applied at render
-          }
+      const off = triIdx * 4;
+      for (const prop of properties) {
+        const val = prop === "hazard" ? (tri.depth[f] || 0) * (tri.speed[f] || 0) : (tri[prop]?.[f] || 0);
+        const rgb = getColorForValue(prop, val);
+        if (rgb) {
+          result[prop][f][off] = rgb[0];
+          result[prop][f][off + 1] = rgb[1];
+          result[prop][f][off + 2] = rgb[2];
+          result[prop][f][off + 3] = 255;
         }
-        // inactive triangles stay [0,0,0,0] — transparent
-      }
-
-      frames[f] = buf;
-    }
-    result[prop] = frames;
-  }
-
-  return result;
-}/**
- * Build per-triangle class-index histories for all properties.
- * Returns { property: Int8Array(ntri × nframes) }.
- * Access: histories[prop][triIndex * nframes + frameIndex]
- */
-export function buildTriangleHistories(
-  dataset: FloodDataset,
-  colorLUT: ColorLUT,
-): Record<string, Int8Array> {
-  const { ntriangles: ntri, properties, nframes } = dataset.meta;
-  const cache = createFrameCache(nframes);
-  const result: Record<string, Int8Array> = {};
-
-  for (const prop of properties) {
-    const hist = new Int8Array(ntri * nframes);
-    for (let f = 0; f < nframes; f++) {
-      const decoded = decodeFrame(dataset, f, cache);
-      const classes = decoded[prop] as Int8Array;
-      const offset = f; // interleave by frame for cache-friendly per-triangle reads
-      for (let i = 0; i < ntri; i++) {
-        hist[i * nframes + offset] = classes[i];
       }
     }
-    result[prop] = hist;
   }
-
   return result;
 }
+
+// Dummies for compatibility with FloodProvider imports
+export const buildColorLUT = () => ({});
+export const buildTriangleHistories = () => ({});

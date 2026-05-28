@@ -1,64 +1,24 @@
-/* ─────────────────────────────────────────────
- *  Mesh geometry helpers
- * ───────────────────────────────────────────── */
 
-import type { FloodMesh, TriPolygon } from "../types/flood";
-
-/**
- * Convert flat vertex + triangle index arrays into an array of
- * [[lng,lat],[lng,lat],[lng,lat]] polygons for deck.gl.
- * Called once when data loads.
- */
-export function buildTrianglePolygons(mesh: FloodMesh, ntri: number): TriPolygon[] {
-  const V = mesh.vertices;
-  const T = mesh.triangles;
-  const polys: TriPolygon[] = new Array(ntri);
-
-  for (let i = 0; i < ntri; i++) {
-    const a = T[i * 3];
-    const b = T[i * 3 + 1];
-    const c = T[i * 3 + 2];
-    polys[i] = [
-      [V[a * 2], V[a * 2 + 1]],
-      [V[b * 2], V[b * 2 + 1]],
-      [V[c * 2], V[c * 2 + 1]],
-    ];
-  }
-
-  return polys;
+import type { FloodDataset, TriPolygon, Vertex } from "../types/flood";
+export function buildTrianglePolygons(dataset: FloodDataset): TriPolygon[] {
+  return dataset.triangles.map((t) => {
+    const v0 = dataset.vertices[t.vertices[0]];
+    const v1 = dataset.vertices[t.vertices[1]];
+    const v2 = dataset.vertices[t.vertices[2]];
+    return [[v0.lon, v0.lat], [v1.lon, v1.lat], [v2.lon, v2.lat]];
+  });
 }
-
-/** Axis-aligned bounding box */
-export interface BBox {
-  minLng: number;
-  maxLng: number;
-  minLat: number;
-  maxLat: number;
-  centerLng: number;
-  centerLat: number;
-}
-
-/** Compute the bounding box of the mesh vertices */
-export function computeBounds(vertices: number[]): BBox {
+export interface BBox { minLng: number; maxLng: number; minLat: number; maxLat: number; centerLng: number; centerLat: number; }
+export function computeBounds(vertices: Vertex[]): BBox {
   let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;
-
-  for (let i = 0; i < vertices.length; i += 2) {
-    const lng = vertices[i];
-    const lat = vertices[i + 1];
-    if (lat < minLat) minLat = lat;
-    if (lat > maxLat) maxLat = lat;
-    if (lng < minLng) minLng = lng;
-    if (lng > maxLng) maxLng = lng;
+  for (const v of vertices) {
+    if (v.lat < minLat) minLat = v.lat;
+    if (v.lat > maxLat) maxLat = v.lat;
+    if (v.lon < minLng) minLng = v.lon;
+    if (v.lon > maxLng) maxLng = v.lon;
   }
-
-  return {
-    minLng, maxLng, minLat, maxLat,
-    centerLng: (minLng + maxLng) / 2,
-    centerLat: (minLat + maxLat) / 2,
-  };
+  return { minLng, maxLng, minLat, maxLat, centerLng: (minLng + maxLng) / 2, centerLat: (minLat + maxLat) / 2 };
 }
-
-/** Estimate a reasonable zoom level from a bounding box */
 export function estimateZoom(bounds: BBox): number {
   const span = Math.max(bounds.maxLat - bounds.minLat, bounds.maxLng - bounds.minLng);
   const zoom = Math.floor(Math.log2(360 / span)) - 0.5;
