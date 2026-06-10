@@ -83,6 +83,9 @@ export interface SimulationActions {
   moveVertex: (polyIdx: number, vertexIdx: number, coord: [number, number]) => void;
   insertVertex: (polyIdx: number, edgeIdx: number, coord: [number, number]) => void;
   deleteVertex: (polyIdx: number, vertexIdx: number) => void;
+
+  sendToBack: (index: number) => void;
+  bringToFront: (index: number) => void;
 }
 
 /* ── Contexts ────────────────────────────────── */

@@ -509,6 +509,24 @@ export function SimulationPanel() {
               >
                 {isEditing ? "Done" : "Edit Shape"}
               </Button>
+              <button
+                onClick={() => actions.sendToBack(selectedFeatureIndex!)}
+                title="Send to back (reveals polygons underneath)"
+                style={{
+                  padding: "2px 7px", background: "rgba(255,255,255,0.08)",
+                  border: "1px solid rgba(255,255,255,0.12)", borderRadius: 4,
+                  color: "#a1a1aa", fontSize: 11, cursor: "pointer",
+                }}
+              >
+                ⤓ Back
+              </button>
+              <button
+                onClick={() => actions.bringToFront(selectedFeatureIndex!)}
+                title="Bring to front"
+                style={{ /* same style */ }}
+              >
+                ⤒ Front
+              </button>
             </div>
 
             {selectedTypeDef.properties.map((propDef) => {

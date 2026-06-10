@@ -39,7 +39,8 @@ type Action =
   | { type: "STOP_EDITING" }
   | { type: "MOVE_VERTEX"; polyIdx: number; vertexIdx: number; coord: [number, number] }
   | { type: "INSERT_VERTEX"; polyIdx: number; edgeIdx: number; coord: [number, number] }
-  | { type: "DELETE_VERTEX"; polyIdx: number; vertexIdx: number };
+  | { type: "DELETE_VERTEX"; polyIdx: number; vertexIdx: number }
+  | { type: "REORDER_FEATURE"; index: number; to: "back" | "front" };
 /* ── Initial state ───────────────────────────── */
 
 const initialState: SimulationState = {
@@ -256,6 +257,31 @@ function reducer(state: SimulationState, action: Action): SimulationState {
       });
       return { ...next, selectedEdgeIndex: null }; // indices shifted; force re-pick
     }
+
+
+    case "REORDER_FEATURE": {
+      const feats = [...state.features.features];
+      if (!feats[action.index]) return state;
+
+      const [moved] = feats.splice(action.index, 1);
+      const newIndex = action.to === "back" ? 0 : feats.length;
+      feats.splice(newIndex, 0, moved);
+
+      // Indices are IDs — remap the selection so it follows the same feature
+      const remap = (old: number | null): number | null => {
+        if (old === null) return null;
+        if (old === action.index) return newIndex;
+        if (action.to === "back" && old < action.index) return old + 1;
+        if (action.to === "front" && old > action.index) return old - 1;
+        return old;
+      };
+
+      return {
+        ...state,
+        features: { ...state.features, features: feats },
+        selectedFeatureIndex: remap(state.selectedFeatureIndex),
+      };
+    }
     default:
       return state;
   }
@@ -418,6 +444,8 @@ export function SimulationProvider({ children }: { children: React.ReactNode }) 
       moveVertex: (polyIdx, vertexIdx, coord) => dispatch({ type: "MOVE_VERTEX", polyIdx, vertexIdx, coord }),
       insertVertex: (polyIdx, edgeIdx, coord) => dispatch({ type: "INSERT_VERTEX", polyIdx, edgeIdx, coord }),
       deleteVertex: (polyIdx, vertexIdx) => dispatch({ type: "DELETE_VERTEX", polyIdx, vertexIdx }),
+      sendToBack: (index) => dispatch({ type: "REORDER_FEATURE", index, to: "back" }),
+      bringToFront: (index) => dispatch({ type: "REORDER_FEATURE", index, to: "front" }),
     }),
     [submitSimulation, closeStream],
   );
