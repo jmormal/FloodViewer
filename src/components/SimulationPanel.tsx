@@ -267,6 +267,7 @@ export function SimulationPanel() {
     activeType,
     selectedFeatureIndex,
     selectedEdgeIndex,
+    isEditing,
     areaSqM,
     config,
     job,
@@ -500,6 +501,14 @@ export function SimulationPanel() {
               >
                 Delete
               </button>
+              <Button
+                size="small"
+                severity={isEditing ? "info" : "secondary"}
+                outlined
+                onClick={() => (isEditing ? actions.stopEditing() : actions.startEditing())}
+              >
+                {isEditing ? "Done" : "Edit Shape"}
+              </Button>
             </div>
 
             {selectedTypeDef.properties.map((propDef) => {

@@ -35,6 +35,8 @@ export interface SimulationState {
   /** Currently selected edge index (within selected polygon) */
   selectedEdgeIndex: number | null;
 
+  /** Vertex editing mode */
+  isEditing: boolean
   /** Total area of all drawn polygons (m²) */
   areaSqM: number | null;
 
@@ -75,6 +77,12 @@ export interface SimulationActions {
 
   /* Job */
   submitSimulation: () => Promise<void>;
+
+  startEditing: () => void;
+  stopEditing: () => void;
+  moveVertex: (polyIdx: number, vertexIdx: number, coord: [number, number]) => void;
+  insertVertex: (polyIdx: number, edgeIdx: number, coord: [number, number]) => void;
+  deleteVertex: (polyIdx: number, vertexIdx: number) => void;
 }
 
 /* ── Contexts ────────────────────────────────── */

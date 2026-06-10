@@ -95,12 +95,12 @@ export function usePolygonDraw() {
         if (
           !info.layer ||
           (info.layer.id !== "draw-completed-fill" &&
-            info.layer.id !== "draw-active-edges")
+            info.layer.id !== "draw-active-edges" &&
+            !info.layer.id.startsWith("edit-"))
         ) {
           simActions.setSelectedFeatureIndex(null);
           simActions.setSelectedEdgeIndex(null);
         }
-        return;
       }
       if (!info.coordinate) return;
 

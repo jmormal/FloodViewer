@@ -15,6 +15,7 @@ import { theme } from "../config/theme";
 import { usePolygonDraw } from "../hooks/usePolygonDraw";
 import { SimulationPanel } from "./SimulationPanel";
 
+import { usePolygonEdit } from "../hooks/usePolygonEdit";
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 
 export function FloodMap() {
@@ -35,6 +36,7 @@ export function FloodMap() {
   /* ── Simulation state (for cursor) ─────────── */
   const { isDrawing } = useSimulationState();
 
+  const { editLayers, isDraggingVertex } = usePolygonEdit();
   const [initialView, setInitialView] = useState(theme.defaultView);
 
   useEffect(() => {
@@ -93,10 +95,12 @@ export function FloodMap() {
   ]);
 
   /* ── Combined layers ───────────────────────── */
+
   const layers = useMemo(
-    () => [...floodLayers, ...drawLayers],
-    [floodLayers, drawLayers],
+    () => [...floodLayers, ...drawLayers, ...editLayers],
+    [floodLayers, drawLayers, editLayers],
   );
+
 
   /* ── Tooltip ───────────────────────────────── */
   const renderTooltip = useCallback(
@@ -148,10 +152,11 @@ export function FloodMap() {
 
       <DeckGL
         initialViewState={initialView}
-        controller={{ doubleClickZoom: !isDrawing }}
         layers={layers}
         getTooltip={isDrawing ? undefined : renderTooltip}
         getCursor={getCursor}
+        controller={{ doubleClickZoom: !isDrawing, dragPan: !isDraggingVertex }}
+
         onClick={drawClick}
         onHover={drawHover}
       >

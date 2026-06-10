@@ -34,8 +34,12 @@ type Action =
   | { type: "UPDATE_FEATURE_PROP"; polyIdx: number; key: string; value: any }
   | { type: "UPDATE_EDGE_PROP"; polyIdx: number; edgeIdx: number; key: string; value: any }
   | { type: "UPDATE_CONFIG"; key: string; value: any }
-  | { type: "SET_JOB"; status: JobStatus; id?: string | null; error?: string | null; progress?: number | null };
-
+  | { type: "SET_JOB"; status: JobStatus; id?: string | null; error?: string | null; progress?: number | null }
+  | { type: "START_EDITING" }
+  | { type: "STOP_EDITING" }
+  | { type: "MOVE_VERTEX"; polyIdx: number; vertexIdx: number; coord: [number, number] }
+  | { type: "INSERT_VERTEX"; polyIdx: number; edgeIdx: number; coord: [number, number] }
+  | { type: "DELETE_VERTEX"; polyIdx: number; vertexIdx: number };
 /* ── Initial state ───────────────────────────── */
 
 const initialState: SimulationState = {
@@ -47,6 +51,7 @@ const initialState: SimulationState = {
   areaSqM: null,
   config: defaultSimConfig(),
   job: { status: "idle", id: null, error: null, progress: null },
+  isEditing: false
 };
 
 /* ── Helpers ──────────────────────────────────── */
@@ -78,6 +83,26 @@ function initEdgeDefaults(feature: Feature): Feature {
   };
 }
 
+function withRing(
+  state: SimulationState,
+  polyIdx: number,
+  fn: (ring: any[], edges: any[] | undefined) => { ring: any[]; edges?: any[] },
+): SimulationState {
+  const feats = [...state.features.features];
+  const f: any = feats[polyIdx];
+  if (!f) return state;
+  const { ring, edges } = fn(
+    [...f.geometry.coordinates[0]],
+    f.properties?.edges ? [...f.properties.edges] : undefined,
+  );
+  feats[polyIdx] = {
+    ...f,
+    geometry: { ...f.geometry, coordinates: [ring] },
+    properties: { ...f.properties, ...(edges !== undefined ? { edges } : {}) },
+  };
+  const features = { ...state.features, features: feats };
+  return { ...state, features, areaSqM: calcArea(features) };
+}
 /**
  * Fetch result JSON (plain or gzipped) and parse it.
  * The browser handles Content-Encoding: gzip transparently,
@@ -195,7 +220,42 @@ function reducer(state: SimulationState, action: Action): SimulationState {
           progress: action.progress ?? null,
         },
       };
+    case "START_EDITING":
+      if (state.selectedFeatureIndex === null) return state;
+      return { ...state, isEditing: true, selectedEdgeIndex: null };
 
+    case "STOP_EDITING":
+      return { ...state, isEditing: false };
+
+    case "MOVE_VERTEX":
+      return withRing(state, action.polyIdx, (ring, edges) => {
+        ring[action.vertexIdx] = action.coord;
+        if (action.vertexIdx === 0) ring[ring.length - 1] = action.coord; // keep ring closed
+        return { ring, edges };
+      });
+
+    case "INSERT_VERTEX":
+      return withRing(state, action.polyIdx, (ring, edges) => {
+        ring.splice(action.edgeIdx + 1, 0, action.coord);
+        // Splitting edge i → both halves inherit its boundary conditions
+        if (edges && edges.length > 0) {
+          edges.splice(action.edgeIdx + 1, 0, { ...(edges[action.edgeIdx] || {}) });
+        }
+        return { ring, edges };
+      });
+
+    case "DELETE_VERTEX": {
+      const f: any = state.features.features[action.polyIdx];
+      if (!f || f.geometry.coordinates[0].length - 1 <= 3) return state; // keep ≥ 3 vertices
+      const next = withRing(state, action.polyIdx, (ring, edges) => {
+        ring.splice(action.vertexIdx, 1);
+        if (action.vertexIdx === 0) ring[ring.length - 1] = ring[0]; // re-close
+        // Removing vertex i merges edge (i−1) and edge i → drop edge i's entry
+        if (edges && edges.length > 0) edges.splice(action.vertexIdx, 1);
+        return { ring, edges };
+      });
+      return { ...next, selectedEdgeIndex: null }; // indices shifted; force re-pick
+    }
     default:
       return state;
   }
@@ -353,6 +413,11 @@ export function SimulationProvider({ children }: { children: React.ReactNode }) 
       updateConfig: (key, value) =>
         dispatch({ type: "UPDATE_CONFIG", key, value }),
       submitSimulation,
+      startEditing: () => dispatch({ type: "START_EDITING" }),
+      stopEditing: () => dispatch({ type: "STOP_EDITING" }),
+      moveVertex: (polyIdx, vertexIdx, coord) => dispatch({ type: "MOVE_VERTEX", polyIdx, vertexIdx, coord }),
+      insertVertex: (polyIdx, edgeIdx, coord) => dispatch({ type: "INSERT_VERTEX", polyIdx, edgeIdx, coord }),
+      deleteVertex: (polyIdx, vertexIdx) => dispatch({ type: "DELETE_VERTEX", polyIdx, vertexIdx }),
     }),
     [submitSimulation, closeStream],
   );
