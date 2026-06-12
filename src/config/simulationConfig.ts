@@ -53,6 +53,7 @@ export const SIMULATION_PARAMS: PropertyDef[] = [
     options: [
       { value: "DE0", label: "DE0 (default)" },
       { value: "DE1", label: "DE1 (2nd order)" },
+      { value: "DE_ader2", label: "GPU " },
     ],
   },
 ];

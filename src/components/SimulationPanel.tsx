@@ -25,6 +25,8 @@ import {
 import { SIMULATION_PARAMS } from "../config/simulationConfig";
 import { CodeEditorModal } from "./CodeEditorModal";
 import { Button } from "./buttons/Button";
+import 'primeicons/primeicons.css';
+
 /* ── Styles ──────────────────────────────────── */
 
 const S = {
@@ -340,7 +342,7 @@ export function SimulationPanel() {
               const def = POLYGON_TYPES[key];
               const [r, g, b] = def.color.stroke;
               return (
-                <button
+                <Button
                   key={key}
                   onClick={() => actions.startDrawing(key)}
                   disabled={isJobBusy}
@@ -361,7 +363,7 @@ export function SimulationPanel() {
                   title={def.description}
                 >
                   {def.icon} {def.label}
-                </button>
+                </Button>
               );
             })}
           </div>
@@ -487,46 +489,64 @@ export function SimulationPanel() {
                 {selectedTypeDef.icon} {selectedTypeDef.label} #
                 {selectedFeatureIndex! + 1}
               </div>
-              <button
+              <Button
                 onClick={() => actions.deleteFeature(selectedFeatureIndex!)}
+                size="small"
+                title="Delete"
+                severity="danger"
                 style={{
-                  padding: "2px 8px",
-                  background: "rgba(255,107,107,0.15)",
-                  border: "none",
-                  borderRadius: 4,
-                  color: "#ff6b6b",
-                  fontSize: 10,
-                  cursor: "pointer",
+                  padding: "1px 7px", background: "rgba(255,255,255,0.08)",
+                  border: "1px solid rgba(255,255,255,0.12)", borderRadius: 4,
+                  color: "#db3831", fontSize: 11, cursor: "pointer",
                 }}
               >
-                Delete
-              </button>
+                <span className="pi pi-trash" style={{ fontSize: '1.5rem' }}></span>
+              </Button>
               <Button
                 size="small"
-                severity={isEditing ? "info" : "secondary"}
+                title="Edit"
+                // severity={isEditing ? "info" : "secondary"}
                 outlined
                 onClick={() => (isEditing ? actions.stopEditing() : actions.startEditing())}
-              >
-                {isEditing ? "Done" : "Edit Shape"}
-              </Button>
-              <button
-                onClick={() => actions.sendToBack(selectedFeatureIndex!)}
-                title="Send to back (reveals polygons underneath)"
                 style={{
-                  padding: "2px 7px", background: "rgba(255,255,255,0.08)",
+                  padding: "1px 7px", background: "rgba(255,255,255,0.08)",
+                  border: "1px solid rgba(255,255,255,0.12)", borderRadius: 4,
+                  color: "#d1de00", fontSize: 11, cursor: "pointer",
+                }}
+              >
+                {isEditing ?
+                  <>
+                    <i className="pi pi-check" style={{ fontSize: '1.5rem', color: "green" }}></i>
+                  </>
+                  :
+                  <>
+                    <i className="pi pi-pencil" style={{ fontSize: '1.5rem' }}></i>
+                  </>
+                }
+              </Button>
+              <Button
+                onClick={() => actions.sendToBack(selectedFeatureIndex!)}
+                title="Send to back"
+                // size="large"
+                style={{
+                  padding: "1px 7px", background: "rgba(255,255,255,0.08)",
                   border: "1px solid rgba(255,255,255,0.12)", borderRadius: 4,
                   color: "#a1a1aa", fontSize: 11, cursor: "pointer",
                 }}
               >
-                ⤓ Back
-              </button>
-              <button
+                <i className="pi pi-sort-amount-down" style={{ fontSize: '1.5rem' }}></i>
+              </Button>
+              <Button
                 onClick={() => actions.bringToFront(selectedFeatureIndex!)}
                 title="Bring to front"
-                style={{ /* same style */ }}
+                style={{
+                  padding: "2px 5px", background: "rgba(255,255,255,0.08)",
+                  border: "1px solid rgba(255,255,255,0.12)", borderRadius: 4,
+                  color: "#a1a1aa", fontSize: 11, cursor: "pointer",
+                }}
               >
-                ⤒ Front
-              </button>
+                <i className="pi pi-sort-amount-up" style={{ fontSize: '1.5rem' }}></i>
+              </Button>
             </div>
 
             {selectedTypeDef.properties.map((propDef) => {
@@ -640,7 +660,8 @@ export function SimulationPanel() {
                   disabled={isJobBusy}
                   severity="danger"
                 >
-                  Clear All
+                  <span className="pi pi-trash"></span>
+                  Clear all
                 </Button>
               )}
               <Button

@@ -66,7 +66,7 @@ export function FileDrop({ onLoadStart, onLoadEnd, onError }: FileDropProps) {
         `}
       >
         <h2 className="font-mono text-base font-semibold text-accent mb-2">
-          Flood Viewer
+          Hidris Simullation Platform
         </h2>
         <p className="text-sm text-dim leading-relaxed">
           Drop <b className="text-white/80">data.json</b> or{" "}

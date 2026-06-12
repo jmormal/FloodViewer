@@ -245,9 +245,9 @@ export const POLYGON_TYPES: Record<string, PolygonTypeDef> = {
     icon: "△",
     description: "Set bed elevation — Set_elevation_operator",
     color: {
-      fill: [245, 158, 11, 30],
-      stroke: [245, 158, 11, 200],
-      fillSelected: [245, 158, 11, 60],
+      fill: [162, 54, 233, 30],
+      stroke: [162, 54, 233, 30],
+      fillSelected: [162, 54, 233, 30],
     },
     properties: [
       {
@@ -273,6 +273,29 @@ export const POLYGON_TYPES: Record<string, PolygonTypeDef> = {
         label: "Label",
         type: "text",
         default: "",
+      },
+    ],
+  },
+
+  /* ── 4. Elevation ──────────────────────────── */
+  meshResolution: {
+    key: "meshResolution",
+    label: "Mesh Resoltion",
+    icon: "△",
+    description: "Set resolution of polygon — Set_elevation_operator",
+    color: {
+      fill: [245, 158, 11, 30],
+      stroke: [245, 158, 11, 200],
+      fillSelected: [245, 158, 11, 60],
+    },
+    properties: [
+      {
+        key: "resolution",
+        label: "Resolution",
+        type: "number",
+        default: 50,
+        step: 0.1,
+        unit: "m",
       },
     ],
   },

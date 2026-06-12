@@ -12,7 +12,7 @@ export function Legend() {
   if (!entry) return null;
 
   return (
-    <div className="panel absolute bottom-6 right-4 z-[1000] p-3.5 min-w-[170px]">
+    <div className="panel absolute bottom-10 left-4 z-[1000] p-3.5 min-w-[170px]">
       <div className="text-[11px] font-semibold tracking-wider uppercase text-dim mb-2.5">
         {entry.label}
       </div>
