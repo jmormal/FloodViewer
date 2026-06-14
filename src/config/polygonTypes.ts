@@ -280,13 +280,35 @@ export const POLYGON_TYPES: Record<string, PolygonTypeDef> = {
   /* ── 4. Elevation ──────────────────────────── */
   meshResolution: {
     key: "meshResolution",
-    label: "Mesh Resoltion",
+    label: "Mesh Resolution",
     icon: "△",
     description: "Set resolution of polygon — Set_elevation_operator",
     color: {
       fill: [245, 158, 11, 30],
       stroke: [245, 158, 11, 200],
       fillSelected: [245, 158, 11, 60],
+    },
+    properties: [
+      {
+        key: "resolution",
+        label: "Resolution",
+        type: "number",
+        default: 50,
+        step: 0.1,
+        unit: "m",
+      },
+    ],
+  },
+
+  interiorBoundry: {
+    key: "interiorBoundry",
+    label: "Interior Boundry",
+    icon: "△",
+    description: "Set resolution of polygon — Set_elevation_operator",
+    color: {
+      fill: [200, 13, 106, 30],
+      stroke: [200, 13, 106, 30],
+      fillSelected: [200, 13, 106, 30],
     },
     properties: [
       {
