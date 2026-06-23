@@ -311,14 +311,6 @@ export const POLYGON_TYPES: Record<string, PolygonTypeDef> = {
       fillSelected: [200, 13, 106, 30],
     },
     properties: [
-      {
-        key: "resolution",
-        label: "Resolution",
-        type: "number",
-        default: 50,
-        step: 0.1,
-        unit: "m",
-      },
     ],
   },
 };

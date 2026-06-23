@@ -12,7 +12,6 @@ import { LoadingOverlay } from "./LoadingOverlay";
 import { TopBar } from "./TopBar";
 import { ControlPanel } from "./ControlPanel";
 import { Legend } from "./Legend";
-import { FileSizeBadge } from "./FileSizeBadge";
 import { TriangleHistory } from "./TriangleHistory";
 import { Footer } from "./Footer";
 /** Inner shell — consumes context */
@@ -32,7 +31,6 @@ function AppShell() {
           <TopBar />
           <ControlPanel />
           <Legend />
-          <FileSizeBadge />
           <TriangleHistory />
         </>
       )}
