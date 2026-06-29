@@ -14,6 +14,7 @@ import { ControlPanel } from "./ControlPanel";
 import { Legend } from "./Legend";
 import { TriangleHistory } from "./TriangleHistory";
 import { Footer } from "./Footer";
+import { AuthProvider } from "../auth/AuthProvider";
 /** Inner shell — consumes context */
 function AppShell() {
   const { dataset } = useFloodState();
@@ -57,11 +58,13 @@ function AppShell() {
 /** Public export — wraps everything in providers */
 export default function App() {
   return (
-    <FloodProvider>
-      <SimulationProvider>
-        <AppShell />
-      </SimulationProvider>
-      <Footer />
-    </FloodProvider>
+    <AuthProvider>
+      <FloodProvider>
+        <SimulationProvider>
+          <AppShell />
+        </SimulationProvider>
+        <Footer />
+      </FloodProvider>
+    </AuthProvider>
   );
 }

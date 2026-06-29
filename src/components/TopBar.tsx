@@ -2,6 +2,7 @@
  *  TopBar — app title + dataset metadata
  * ───────────────────────────────────────────── */
 
+import { useAuth } from "../auth/AuthProvider";
 import { useFloodState } from "../context/FloodContext";
 
 export function TopBar() {
@@ -10,6 +11,7 @@ export function TopBar() {
 
   const m = dataset.meta;
 
+  const { username, logout } = useAuth();
   return (
     <div
       className="
@@ -27,6 +29,14 @@ export function TopBar() {
       <span className="font-mono text-xs text-dim">
         {m.ntriangles.toLocaleString()} tri · {m.nframes} frames · {m.nclasses} cls · WebGL
       </span>
+      <div className="w-px h-5 bg-white/10" />
+      <button
+        onClick={logout}
+        className="font-mono text-xs text-dim hover:text-accent transition"
+        title="Log out"
+      >
+        {username} · ↩
+      </button>
     </div>
   );
 }

@@ -57,7 +57,7 @@ const initialState: SimulationState = {
 
 /* ── Helpers ──────────────────────────────────── */
 
-const API_URL = import.meta.env.VITE_API_URL || "http://api.127.0.0.1.nip.io";
+const API_URL = import.meta.env.VITE_API_URL || "https://api.127.0.0.1.nip.io";
 
 function calcArea(fc: { features: any[] }): number | null {
   if (fc.features.length === 0) return null;
