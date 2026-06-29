@@ -1,70 +1,27 @@
 /* ─────────────────────────────────────────────
- *  App — top-level orchestrator
+ *  App — auth gate + routing
+ *
+ *  AuthProvider forces Keycloak login before anything
+ *  renders. Routes:
+ *    /                  → instance list
+ *    /instance/:id      → editor for one instance
  * ───────────────────────────────────────────── */
 
-import { useState } from "react";
-import { FloodProvider } from "../context/FloodProvider";
-import { SimulationProvider } from "../context/SimulationProvider";
-import { useFloodState } from "../context/FloodContext";
-import { FloodMap } from "./FloodMap";
-import { FileDrop } from "./FileDrop";
-import { LoadingOverlay } from "./LoadingOverlay";
-import { TopBar } from "./TopBar";
-import { ControlPanel } from "./ControlPanel";
-import { Legend } from "./Legend";
-import { TriangleHistory } from "./TriangleHistory";
-import { Footer } from "./Footer";
+import { Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "../auth/AuthProvider";
-/** Inner shell — consumes context */
-function AppShell() {
-  const { dataset } = useFloodState();
-  const [loading, setLoading] = useState(false);
-  const [loadMsg, setLoadMsg] = useState("Loading…");
+import { Footer } from "./Footer";
+import InstanceList from "../pages/InstanceList";
+import InstanceEditor from "../pages/InstanceEditor";
 
-  const isLoaded = dataset !== null;
-
-  return (
-    <div className="relative h-screen w-screen overflow-hidden bg-[#0a0e17]">
-      <FloodMap />
-
-      {isLoaded && (
-        <>
-          <TopBar />
-          <ControlPanel />
-          <Legend />
-          <TriangleHistory />
-        </>
-      )}
-
-      {!isLoaded && !loading && (
-        <FileDrop
-          onLoadStart={() => {
-            setLoadMsg("Parsing data…");
-            setLoading(true);
-          }}
-          onLoadEnd={() => setLoading(false)}
-          onError={(msg) => {
-            setLoading(false);
-            alert(msg);
-          }}
-        />
-      )}
-
-      {loading && <LoadingOverlay message={loadMsg} />}
-    </div>
-  );
-}
-
-/** Public export — wraps everything in providers */
 export default function App() {
   return (
     <AuthProvider>
-      <FloodProvider>
-        <SimulationProvider>
-          <AppShell />
-        </SimulationProvider>
-        <Footer />
-      </FloodProvider>
+      <Routes>
+        <Route path="/" element={<InstanceList />} />
+        <Route path="/instance/:publicId" element={<InstanceEditor />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+      <Footer />
     </AuthProvider>
   );
 }

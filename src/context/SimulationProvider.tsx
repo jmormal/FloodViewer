@@ -1,13 +1,24 @@
 /* ─────────────────────────────────────────────
  *  SimulationProvider — owns drawing + config state
  *
- *  On job completion, downloads the result JSON
- *  and feeds it into the flood visualizer.
+ *  Now instance-aware:
+ *   - hydrates from a saved instance payload on mount
+ *   - debounced auto-save (PATCH) on any setup change;
+ *     saving the setup marks the instance unsolved
+ *   - simulate / stream / result are per-instance
+ *   - if the instance is already solved, fetches and
+ *     loads the stored solution into the visualizer
  * ───────────────────────────────────────────── */
 
-import React, { useReducer, useMemo, useCallback, useRef } from "react";
+import React, {
+  useReducer,
+  useMemo,
+  useCallback,
+  useRef,
+  useEffect,
+} from "react";
 import * as turf from "@turf/turf";
-import type { Feature } from "geojson";
+import type { Feature, FeatureCollection } from "geojson";
 import {
   SimulationStateContext,
   SimulationActionsContext,
@@ -19,11 +30,20 @@ import { useFloodActions } from "./FloodContext";
 import { defaultSimConfig } from "../config/simulationConfig";
 import { POLYGON_TYPES, defaultEdgeProps } from "../config/polygonTypes";
 import { serializePayload } from "../utils/serialize";
+import { deserializePayload } from "../utils/deserialize";
+import {
+  API_URL,
+  getInstance,
+  updateInstance,
+  enqueueSimulation,
+} from "../utils/api";
+import { authFetch, sseUrlWithToken } from "../auth/keycloak";
 import type { FloodDataset } from "../types/flood";
 
 /* ── Action types ────────────────────────────── */
 
 type Action =
+  | { type: "HYDRATE"; features: FeatureCollection; config: Record<string, any> }
   | { type: "START_DRAWING"; typeKey: string }
   | { type: "STOP_DRAWING" }
   | { type: "ADD_FEATURE"; feature: Feature }
@@ -41,6 +61,7 @@ type Action =
   | { type: "INSERT_VERTEX"; polyIdx: number; edgeIdx: number; coord: [number, number] }
   | { type: "DELETE_VERTEX"; polyIdx: number; vertexIdx: number }
   | { type: "REORDER_FEATURE"; index: number; to: "back" | "front" };
+
 /* ── Initial state ───────────────────────────── */
 
 const initialState: SimulationState = {
@@ -52,19 +73,16 @@ const initialState: SimulationState = {
   areaSqM: null,
   config: defaultSimConfig(),
   job: { status: "idle", id: null, error: null, progress: null },
-  isEditing: false
+  isEditing: false,
 };
 
 /* ── Helpers ──────────────────────────────────── */
-
-const API_URL = import.meta.env.VITE_API_URL || "https://api.127.0.0.1.nip.io";
 
 function calcArea(fc: { features: any[] }): number | null {
   if (fc.features.length === 0) return null;
   return Math.round(turf.area(fc as any) * 100) / 100;
 }
 
-/** Attach default edge properties to a feature based on its polygon type */
 function initEdgeDefaults(feature: Feature): Feature {
   const typeKey = feature.properties?._type;
   if (!typeKey || !POLYGON_TYPES[typeKey]?.edgeProperties) return feature;
@@ -72,7 +90,7 @@ function initEdgeDefaults(feature: Feature): Feature {
   const coords = (feature.geometry as any)?.coordinates?.[0];
   if (!coords || coords.length < 2) return feature;
 
-  const numEdges = coords.length - 1; // closed ring: last vertex === first
+  const numEdges = coords.length - 1;
   const defaults = defaultEdgeProps(typeKey);
 
   return {
@@ -104,13 +122,13 @@ function withRing(
   const features = { ...state.features, features: feats };
   return { ...state, features, areaSqM: calcArea(features) };
 }
+
 /**
- * Fetch result JSON (plain or gzipped) and parse it.
- * The browser handles Content-Encoding: gzip transparently,
- * so this works for both .json and .json.gz responses.
+ * Fetch the stored solution for an instance (gzipped JSON; the browser
+ * inflates transparently) and parse it.
  */
 async function fetchResultDataset(url: string): Promise<FloodDataset> {
-  const res = await fetch(url);
+  const res = await authFetch(url);
   if (!res.ok) throw new Error(`Failed to download result: ${res.status}`);
   return (await res.json()) as FloodDataset;
 }
@@ -119,6 +137,14 @@ async function fetchResultDataset(url: string): Promise<FloodDataset> {
 
 function reducer(state: SimulationState, action: Action): SimulationState {
   switch (action.type) {
+    case "HYDRATE":
+      return {
+        ...initialState,
+        features: action.features,
+        config: action.config,
+        areaSqM: calcArea(action.features),
+      };
+
     case "START_DRAWING":
       return {
         ...state,
@@ -221,6 +247,7 @@ function reducer(state: SimulationState, action: Action): SimulationState {
           progress: action.progress ?? null,
         },
       };
+
     case "START_EDITING":
       if (state.selectedFeatureIndex === null) return state;
       return { ...state, isEditing: true, selectedEdgeIndex: null };
@@ -231,14 +258,13 @@ function reducer(state: SimulationState, action: Action): SimulationState {
     case "MOVE_VERTEX":
       return withRing(state, action.polyIdx, (ring, edges) => {
         ring[action.vertexIdx] = action.coord;
-        if (action.vertexIdx === 0) ring[ring.length - 1] = action.coord; // keep ring closed
+        if (action.vertexIdx === 0) ring[ring.length - 1] = action.coord;
         return { ring, edges };
       });
 
     case "INSERT_VERTEX":
       return withRing(state, action.polyIdx, (ring, edges) => {
         ring.splice(action.edgeIdx + 1, 0, action.coord);
-        // Splitting edge i → both halves inherit its boundary conditions
         if (edges && edges.length > 0) {
           edges.splice(action.edgeIdx + 1, 0, { ...(edges[action.edgeIdx] || {}) });
         }
@@ -247,17 +273,15 @@ function reducer(state: SimulationState, action: Action): SimulationState {
 
     case "DELETE_VERTEX": {
       const f: any = state.features.features[action.polyIdx];
-      if (!f || f.geometry.coordinates[0].length - 1 <= 3) return state; // keep ≥ 3 vertices
+      if (!f || f.geometry.coordinates[0].length - 1 <= 3) return state;
       const next = withRing(state, action.polyIdx, (ring, edges) => {
         ring.splice(action.vertexIdx, 1);
-        if (action.vertexIdx === 0) ring[ring.length - 1] = ring[0]; // re-close
-        // Removing vertex i merges edge (i−1) and edge i → drop edge i's entry
+        if (action.vertexIdx === 0) ring[ring.length - 1] = ring[0];
         if (edges && edges.length > 0) edges.splice(action.vertexIdx, 1);
         return { ring, edges };
       });
-      return { ...next, selectedEdgeIndex: null }; // indices shifted; force re-pick
+      return { ...next, selectedEdgeIndex: null };
     }
-
 
     case "REORDER_FEATURE": {
       const feats = [...state.features.features];
@@ -267,7 +291,6 @@ function reducer(state: SimulationState, action: Action): SimulationState {
       const newIndex = action.to === "back" ? 0 : feats.length;
       feats.splice(newIndex, 0, moved);
 
-      // Indices are IDs — remap the selection so it follows the same feature
       const remap = (old: number | null): number | null => {
         if (old === null) return null;
         if (old === action.index) return newIndex;
@@ -282,6 +305,7 @@ function reducer(state: SimulationState, action: Action): SimulationState {
         selectedFeatureIndex: remap(state.selectedFeatureIndex),
       };
     }
+
     default:
       return state;
   }
@@ -289,14 +313,31 @@ function reducer(state: SimulationState, action: Action): SimulationState {
 
 /* ── Provider ────────────────────────────────── */
 
-export function SimulationProvider({ children }: { children: React.ReactNode }) {
+interface ProviderProps {
+  children: React.ReactNode;
+  /** The instance this editor is bound to. */
+  publicId: string;
+  /** Called once the solved/unsolved status is known or changes. */
+  onSolvedChange?: (solved: boolean) => void;
+}
+
+const AUTOSAVE_DEBOUNCE_MS = 800;
+
+export function SimulationProvider({
+  children,
+  publicId,
+  onSolvedChange,
+}: ProviderProps) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const eventSourceRef = useRef<EventSource | null>(null);
 
-  // Access the flood visualizer's loadDataset action
   const { loadDataset } = useFloodActions();
 
-  /** Close any active SSE stream */
+  // Hydration gate: don't autosave until the initial load has happened,
+  // otherwise the empty initial state would overwrite the saved instance.
+  const hydratedRef = useRef(false);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const closeStream = useCallback(() => {
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
@@ -304,35 +345,88 @@ export function SimulationProvider({ children }: { children: React.ReactNode }) 
     }
   }, []);
 
-  /** Download result and load it into the visualizer */
-  const loadResult = useCallback(
-    async (resultPath: string) => {
-      try {
-        // resultPath is relative like "/api/simulate/abc123/result"
-        const url = resultPath.startsWith("http")
-          ? resultPath
-          : `${API_URL}${resultPath}`;
+  /* ── Load the stored solution into the visualizer ── */
+  const loadStoredSolution = useCallback(async () => {
+    try {
+      const dataset = await fetchResultDataset(
+        `${API_URL}/api/instances/${publicId}/result`,
+      );
+      loadDataset(dataset, 0);
+    } catch (e: any) {
+      console.error("Failed to load stored solution:", e);
+    }
+  }, [publicId, loadDataset]);
 
-        const dataset = await fetchResultDataset(url);
-        loadDataset(dataset, 0);
+  /* ── Initial hydrate from the saved instance ── */
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const detail = await getInstance(publicId);
+        if (cancelled) return;
+
+        const { features, config } = deserializePayload(detail.instance);
+        dispatch({ type: "HYDRATE", features, config });
+        onSolvedChange?.(detail.is_solved);
+
+        // Allow autosave only after this first hydrate is committed.
+        // A microtask defer ensures the HYDRATE dispatch lands first.
+        queueMicrotask(() => {
+          hydratedRef.current = true;
+        });
+
+        if (detail.is_solved) {
+          await loadStoredSolution();
+        }
       } catch (e: any) {
-        console.error("Failed to load simulation result:", e);
+        console.error("Failed to load instance:", e);
         dispatch({
           type: "SET_JOB",
           status: "error",
-          error: `Result download failed: ${e.message}`,
+          error: `Could not load instance: ${e.message}`,
         });
       }
-    },
-    [loadDataset],
-  );
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Re-run only if the bound instance changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [publicId]);
 
-  /** Open an SSE stream to follow job progress */
+  /* ── Debounced auto-save of the setup ────────── */
+  // Watches the persistable slices only (features + config). Saving the setup
+  // marks the instance unsolved on the server (PATCH clears the solution).
+  useEffect(() => {
+    if (!hydratedRef.current) return;
+
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(async () => {
+      try {
+        const payload = serializePayload(state);
+        await updateInstance(publicId, { instance: payload });
+        onSolvedChange?.(false); // setup changed → no longer solved
+      } catch (e) {
+        console.error("Auto-save failed:", e);
+      }
+    }, AUTOSAVE_DEBOUNCE_MS);
+
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.features, state.config, publicId]);
+
+  /* ── SSE: follow job progress ────────────────── */
   const streamJobStatus = useCallback(
-    (jobId: string) => {
+    async (jobId: string) => {
       closeStream();
 
-      const es = new EventSource(`${API_URL}/api/simulate/${jobId}/stream`);
+      // EventSource can't set headers → token goes in the query string.
+      const url = await sseUrlWithToken(
+        `${API_URL}/api/simulate/${jobId}/stream`,
+      );
+      const es = new EventSource(url);
       eventSourceRef.current = es;
 
       es.addEventListener("meshing", () => {
@@ -341,7 +435,7 @@ export function SimulationProvider({ children }: { children: React.ReactNode }) 
 
       es.addEventListener("progress", (e) => {
         try {
-          const { progress } = JSON.parse(e.data);
+          const { progress } = JSON.parse((e as MessageEvent).data);
           dispatch({ type: "SET_JOB", status: "solving", progress });
         } catch {
           dispatch({ type: "SET_JOB", status: "solving" });
@@ -351,21 +445,15 @@ export function SimulationProvider({ children }: { children: React.ReactNode }) 
       es.addEventListener("complete", async (e) => {
         let data: any = {};
         try {
-          data = JSON.parse(e.data);
+          data = JSON.parse((e as MessageEvent).data);
         } catch { }
-
-        dispatch({
-          type: "SET_JOB",
-          status: "done",
-          id: data.job_id ?? jobId,
-        });
+        dispatch({ type: "SET_JOB", status: "done", id: data.job_id ?? jobId });
         es.close();
         eventSourceRef.current = null;
 
-        // If the server included a result URL, download and visualize it
-        if (data.file) {
-          await loadResult(data.file);
-        }
+        // The worker has written the solution to the DB and flipped is_solved.
+        onSolvedChange?.(true);
+        await loadStoredSolution();
       });
 
       es.addEventListener("error", (e) => {
@@ -382,41 +470,31 @@ export function SimulationProvider({ children }: { children: React.ReactNode }) 
         eventSourceRef.current = null;
       });
     },
-    [closeStream, loadResult],
+    [closeStream, loadStoredSolution, onSolvedChange],
   );
 
-  /** Submit simulation: POST payload → open SSE stream */
+  /* ── Submit simulation ───────────────────────── */
   const submitSimulation = useCallback(async () => {
     closeStream();
     dispatch({ type: "SET_JOB", status: "submitting" });
 
     try {
-      const payload = serializePayload(state);
+      // Flush any pending debounced save so the worker solves the latest setup.
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      await updateInstance(publicId, { instance: serializePayload(state) });
 
-      const res = await fetch(`${API_URL}/api/simulate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      const { job_id } = await enqueueSimulation(publicId);
+      if (!job_id) throw new Error("Server did not return a job_id");
 
-      if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(`${res.status}: ${errText}`);
-      }
-
-      const data = await res.json();
-      const jobId = data.job_id;
-
-      if (!jobId) {
-        throw new Error("Server did not return a job_id");
-      }
-
-      dispatch({ type: "SET_JOB", status: "meshing", id: jobId });
-      streamJobStatus(jobId);
+      dispatch({ type: "SET_JOB", status: "meshing", id: job_id });
+      await streamJobStatus(job_id);
     } catch (e: any) {
       dispatch({ type: "SET_JOB", status: "error", error: e.message });
     }
-  }, [state, closeStream, streamJobStatus]);
+  }, [state, publicId, closeStream, streamJobStatus]);
+
+  /* ── Cleanup on unmount ──────────────────────── */
+  useEffect(() => () => closeStream(), [closeStream]);
 
   const actions: SimulationActions = useMemo(
     () => ({
@@ -430,8 +508,7 @@ export function SimulationProvider({ children }: { children: React.ReactNode }) 
       },
       setSelectedFeatureIndex: (index) =>
         dispatch({ type: "SELECT_FEATURE", index }),
-      setSelectedEdgeIndex: (index) =>
-        dispatch({ type: "SELECT_EDGE", index }),
+      setSelectedEdgeIndex: (index) => dispatch({ type: "SELECT_EDGE", index }),
       updateFeatureProperty: (polyIdx, key, value) =>
         dispatch({ type: "UPDATE_FEATURE_PROP", polyIdx, key, value }),
       updateEdgeProperty: (polyIdx, edgeIdx, key, value) =>
@@ -441,11 +518,15 @@ export function SimulationProvider({ children }: { children: React.ReactNode }) 
       submitSimulation,
       startEditing: () => dispatch({ type: "START_EDITING" }),
       stopEditing: () => dispatch({ type: "STOP_EDITING" }),
-      moveVertex: (polyIdx, vertexIdx, coord) => dispatch({ type: "MOVE_VERTEX", polyIdx, vertexIdx, coord }),
-      insertVertex: (polyIdx, edgeIdx, coord) => dispatch({ type: "INSERT_VERTEX", polyIdx, edgeIdx, coord }),
-      deleteVertex: (polyIdx, vertexIdx) => dispatch({ type: "DELETE_VERTEX", polyIdx, vertexIdx }),
+      moveVertex: (polyIdx, vertexIdx, coord) =>
+        dispatch({ type: "MOVE_VERTEX", polyIdx, vertexIdx, coord }),
+      insertVertex: (polyIdx, edgeIdx, coord) =>
+        dispatch({ type: "INSERT_VERTEX", polyIdx, edgeIdx, coord }),
+      deleteVertex: (polyIdx, vertexIdx) =>
+        dispatch({ type: "DELETE_VERTEX", polyIdx, vertexIdx }),
       sendToBack: (index) => dispatch({ type: "REORDER_FEATURE", index, to: "back" }),
-      bringToFront: (index) => dispatch({ type: "REORDER_FEATURE", index, to: "front" }),
+      bringToFront: (index) =>
+        dispatch({ type: "REORDER_FEATURE", index, to: "front" }),
     }),
     [submitSimulation, closeStream],
   );
