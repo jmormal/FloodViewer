@@ -85,6 +85,7 @@ export function FloodMap() {
     currentFrame,
     activeProperty,
     opacity,
+    showSolution,
   } = useFloodState();
   const { decodeFrame, setSelectedTriangle } = useFloodActions();
 
@@ -395,7 +396,7 @@ export function FloodMap() {
 
   /* ── Flood-triangle layer ──────────────────── */
   const floodLayers = useMemo(() => {
-    if (!triangles || !precomputedColors) return [];
+    if (!triangles || !precomputedColors || !showSolution) return [];
     const src = precomputedColors[activeProperty]?.[currentFrame];
     if (!src) return [];
 
@@ -430,12 +431,13 @@ export function FloodMap() {
     isDrawing,
     transformActive,
     shiftHeld,
+    showSolution,
     setSelectedTriangle,
   ]);
 
   /* ── Combined layers (weather → flood → draw → edit) ── */
   const layers = useMemo(
-    () => [...weatherLayers, ...floodLayers, ...drawLayers, ...editLayers],
+    () => [...weatherLayers, ...drawLayers, ...editLayers, ...floodLayers],
     [weatherLayers, floodLayers, drawLayers, editLayers],
   );
 

@@ -2,7 +2,7 @@
  *  OpacitySlider — layer opacity control
  * ───────────────────────────────────────────── */
 
-import { useFloodState, useFloodActions } from "../context/FloodContext";
+import { useFloodState, useFloodActions } from "../../context/FloodContext";
 
 export function OpacitySlider() {
   const { opacity } = useFloodState();

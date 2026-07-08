@@ -3,9 +3,10 @@
  * ───────────────────────────────────────────── */
 
 import { useFloodState } from "../context/FloodContext";
-import { PropertySelector } from "./PropertySelector";
-import { TimeControls } from "./TimeControls";
-import { OpacitySlider } from "./OpacitySlider";
+import { PropertySelector } from "./controlpanel/PropertySelector";
+import { TimeControls } from "./controlpanel/TimeControls";
+import { OpacitySlider } from "./controlpanel/OpacitySlider";
+import { SolutionToggle } from "./controlpanel/SolutionToggle";
 
 export function ControlPanel() {
   const { dataset } = useFloodState();
@@ -13,6 +14,7 @@ export function ControlPanel() {
 
   return (
     <div className="panel absolute top-20 left-4 z-[1000] w-64 p-4 flex flex-col gap-4">
+      <SolutionToggle />
       <PropertySelector />
       <TimeControls />
       <OpacitySlider />

@@ -2,7 +2,7 @@
  *  TimeControls — frame slider + transport buttons
  * ───────────────────────────────────────────── */
 
-import { useFloodState, useFloodActions } from "../context/FloodContext";
+import { useFloodState, useFloodActions } from "../../context/FloodContext";
 
 export function TimeControls() {
   const { dataset, currentFrame, isPlaying, playbackSpeed } = useFloodState();

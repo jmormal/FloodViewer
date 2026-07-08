@@ -16,13 +16,13 @@ function reducer(state: FloodState, action: Action): FloodState {
       // Inject missing meta and legend for UI compatibility
       ds.meta = { nframes: ds.times.length, ntriangles: ds.triangles.length, properties: ["depth", "speed", "momentum", "hazard"], epsg_source: 25830, nclasses: 6, scale: "linear", nnodes: ds.vertices.length, rle: false };
       ds.legend = {
-        depth: { label: "Depth", classes: [{min:0, max:0.5, color:"#f7fbff"}, {min:0.5, max:1, color:"#c6dbef"}, {min:1, max:1.5, color:"#6baed6"}, {min:1.5, max:2, color:"#2171b5"}, {min:2, max:2.5, color:"#08519c"}, {min:2.5, max:3.0, color:"#08306b"}] },
-        speed: { label: "Speed", classes: [{min:0, max:0.6, color:"#ffffb2"}, {min:0.6, max:1.3, color:"#fed976"}, {min:1.3, max:2.0, color:"#fd8d3c"}, {min:2.0, max:2.6, color:"#fc4e2a"}, {min:2.6, max:3.3, color:"#e31a1c"}, {min:3.3, max:4.0, color:"#800026"}] },
-        momentum: { label: "Momentum", classes: [{min:0, max:1, color:"#f7fcf5"}, {min:1, max:2, color:"#c7e9c0"}, {min:2, max:3, color:"#74c476"}, {min:3, max:4, color:"#31a354"}, {min:4, max:5, color:"#238b45"}, {min:5, max:6, color:"#00441b"}] },
-        hazard: { label: "Hazard", classes: [{min:0, max:0.8, color:"#ffffd4"}, {min:0.8, max:1.6, color:"#fee391"}, {min:1.6, max:2.5, color:"#fe9929"}, {min:2.5, max:3.3, color:"#d95f0e"}, {min:3.3, max:4.1, color:"#993404"}, {min:4.1, max:5.0, color:"#662506"}] }
+        depth: { label: "Depth", classes: [{ min: 0, max: 0.5, color: "#f7fbff" }, { min: 0.5, max: 1, color: "#c6dbef" }, { min: 1, max: 1.5, color: "#6baed6" }, { min: 1.5, max: 2, color: "#2171b5" }, { min: 2, max: 2.5, color: "#08519c" }, { min: 2.5, max: 3.0, color: "#08306b" }] },
+        speed: { label: "Speed", classes: [{ min: 0, max: 0.6, color: "#ffffb2" }, { min: 0.6, max: 1.3, color: "#fed976" }, { min: 1.3, max: 2.0, color: "#fd8d3c" }, { min: 2.0, max: 2.6, color: "#fc4e2a" }, { min: 2.6, max: 3.3, color: "#e31a1c" }, { min: 3.3, max: 4.0, color: "#800026" }] },
+        momentum: { label: "Momentum", classes: [{ min: 0, max: 1, color: "#f7fcf5" }, { min: 1, max: 2, color: "#c7e9c0" }, { min: 2, max: 3, color: "#74c476" }, { min: 3, max: 4, color: "#31a354" }, { min: 4, max: 5, color: "#238b45" }, { min: 5, max: 6, color: "#00441b" }] },
+        hazard: { label: "Hazard", classes: [{ min: 0, max: 0.8, color: "#ffffd4" }, { min: 0.8, max: 1.6, color: "#fee391" }, { min: 1.6, max: 2.5, color: "#fe9929" }, { min: 2.5, max: 3.3, color: "#d95f0e" }, { min: 3.3, max: 4.1, color: "#993404" }, { min: 4.1, max: 5.0, color: "#662506" }] }
       };
       const precomputed = precomputeAllColors(ds);
-      return { ...state, dataset: ds, triangles: buildTrianglePolygons(ds), precomputedColors: precomputed, fileSize: action.fileSize, activeProperty: "depth", currentFrame: 0, selectedTriangle: null, isPlaying: false, playbackSpeed: 1 };
+      return { ...state, dataset: ds, triangles: buildTrianglePolygons(ds), precomputedColors: precomputed, fileSize: action.fileSize, activeProperty: "depth", currentFrame: 0, selectedTriangle: null, isPlaying: false, playbackSpeed: 1, showSolution: true };
     }
     case "SET_PROPERTY": return { ...state, activeProperty: action.prop };
     case "SET_FRAME": return { ...state, currentFrame: action.frame };
@@ -39,6 +39,8 @@ function reducer(state: FloodState, action: Action): FloodState {
       return { ...state, playbackSpeed: steps[(steps.indexOf(state.playbackSpeed) + 1) % steps.length] };
     }
     case "SELECT_TRI": return { ...state, selectedTriangle: action.index };
+    case "TOGGLE_SHOW_SOLUTION": // 👈 Add this case block
+      return { ...state, showSolution: !state.showSolution };
     default: return state;
   }
 }
@@ -71,7 +73,8 @@ export function FloodProvider({ children }: { children: React.ReactNode }) {
     togglePlay: () => dispatch({ type: "TOGGLE_PLAY" }),
     cycleSpeed: () => dispatch({ type: "CYCLE_SPEED" }),
     setSelectedTriangle: (index) => dispatch({ type: "SELECT_TRI", index }),
-    decodeFrame: (index) => ({ _t: state.dataset?.times[index] || 0 })
+    decodeFrame: (index) => ({ _t: state.dataset?.times[index] || 0 }),
+    toggleShowSolution: () => dispatch({ type: "TOGGLE_SHOW_SOLUTION" })
   }), [state.dataset]);
 
   return <FloodStateContext.Provider value={state}><FloodActionsContext.Provider value={actions}>{children}</FloodActionsContext.Provider></FloodStateContext.Provider>;

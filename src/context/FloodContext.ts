@@ -7,6 +7,7 @@ export interface FloodState {
   precomputedColors: Record<string, Uint8Array[]> | null;
   fileSize: number; activeProperty: string; currentFrame: number; opacity: number;
   isPlaying: boolean; playbackSpeed: number; selectedTriangle: number | null;
+  showSolution: boolean;
   colorLUT: any; frameCache: any; triangleHistories: any; // Keep to satisfy old types
 }
 export interface FloodActions {
@@ -14,6 +15,7 @@ export interface FloodActions {
   setActiveProperty: (prop: string) => void; setCurrentFrame: (frame: number) => void;
   setOpacity: (opacity: number) => void; stepFrame: (delta: number) => void;
   togglePlay: () => void; cycleSpeed: () => void; setSelectedTriangle: (index: number | null) => void;
+  toggleShowSolution: () => void;
   decodeFrame: (index: number) => DecodedFrame | null;
 }
 export const FloodStateContext = createContext<FloodState | null>(null);
