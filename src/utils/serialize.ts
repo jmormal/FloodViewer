@@ -33,8 +33,8 @@ export interface StormPayload {
   placement: {
     centerLng: number;
     centerLat: number;
-    halfWidthDeg: number;
-    halfHeightDeg: number;
+    halfW: number;
+    halfH: number;
     rotationDeg: number;
   };
 }

@@ -12,6 +12,7 @@
  * ───────────────────────────────────────────── */
 
 import React, { useState } from "react";
+import * as turf from "@turf/turf";
 import {
   useSimulationState,
   useSimulationActions,
@@ -23,8 +24,12 @@ import {
   type PropertyDef,
 } from "../config/polygonTypes";
 import { SIMULATION_PARAMS } from "../config/simulationConfig";
+import { theme } from "../config/theme";
 import { CodeEditorModal } from "./CodeEditorModal";
+import { StormPicker } from "./StormPicker";
 import { Button } from "./buttons/Button";
+import { defaultStormPlacement, placementToFeature } from "../utils/stormPlacement";
+import type { StormSummary } from "../utils/storms";
 import 'primeicons/primeicons.css';
 
 /* ── Styles ──────────────────────────────────── */
@@ -278,6 +283,28 @@ export function SimulationPanel() {
   /* ── Code editor modal state ─────────────── */
   const [codeEditor, setCodeEditor] = useState<CodeEditorState>(closedEditor);
 
+  /* ── Storm picker ─────────────────────────── */
+  const [showStormPicker, setShowStormPicker] = useState(false);
+
+  const handleStormSelect = (storm: StormSummary) => {
+    setShowStormPicker(false);
+
+    // defaultStormPlacement prefers the storm's own recorded geographic
+    // origin. These are only the fallback for storms uploaded without one
+    // (unparseable/missing CRS): centroid of the existing setup, else the
+    // map's default view.
+    let fallbackLng = theme.defaultView.longitude;
+    let fallbackLat = theme.defaultView.latitude;
+    if (features.features.length > 0) {
+      const [lng, lat] = turf.centroid(features as any).geometry.coordinates;
+      fallbackLng = lng;
+      fallbackLat = lat;
+    }
+
+    const placement = defaultStormPlacement(storm, fallbackLng, fallbackLat);
+    actions.addFeature(placementToFeature(storm.public_id, placement));
+  };
+
   const openCodeEditor = (
     def: PropertyDef,
     currentValue: string,
@@ -366,6 +393,28 @@ export function SimulationPanel() {
                 </Button>
               );
             })}
+
+            <Button
+              onClick={() => setShowStormPicker(true)}
+              disabled={isJobBusy}
+              style={{
+                flex: "1 1 100%",
+                padding: "7px 4px",
+                borderRadius: 6,
+                border: "1px solid rgba(94,187,255,0.3)",
+                background: "rgba(94,187,255,0.08)",
+                color: "rgb(94,187,255)",
+                cursor: isJobBusy ? "not-allowed" : "pointer",
+                fontSize: 11,
+                fontWeight: 500,
+                transition: "all 0.15s",
+                textAlign: "center" as const,
+                opacity: isJobBusy ? 0.4 : 1,
+              }}
+              title="Place a historical storm — drag it into position afterwards"
+            >
+              🌧 Add Storm
+            </Button>
           </div>
         )}
 
@@ -683,6 +732,14 @@ export function SimulationPanel() {
           placeholder={codeEditor.placeholder}
           onSave={handleCodeSave}
           onClose={() => setCodeEditor(closedEditor)}
+        />
+      )}
+
+      {/* ── Storm Picker Modal (portal-level) ─── */}
+      {showStormPicker && (
+        <StormPicker
+          onSelect={handleStormSelect}
+          onClose={() => setShowStormPicker(false)}
         />
       )}
     </>

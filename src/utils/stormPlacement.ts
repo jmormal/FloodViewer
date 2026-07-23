@@ -7,21 +7,16 @@
  *  initial footprint is physically sized, then the user nudges it with the
  *  same gizmo used for the weather overlay.
  *
- *  Placement is stored in lon/lat (degrees) + rotation; the WORKER reprojects
- *  the centre to EPSG:25830 and derives metre half-extents (see
- *  STORMS_INTEGRATION.md). Keeping the browser side in lon/lat avoids shipping
- *  a projection lib to the client.
+ *  Placement is stored in lon/lat (degrees) + rotation, using the same shape
+ *  as WeatherTransform (utils/weather.ts) so both overlays can share the
+ *  same transform math (transformToCorners, transformCenter, ...).
  * ───────────────────────────────────────────── */
 
+import type { Feature, Polygon } from "geojson";
 import type { StormSummary } from "./storms";
+import { transformToCorners, type WeatherTransform } from "./weather";
 
-export interface StormPlacement {
-  centerLng: number;
-  centerLat: number;
-  halfWidthDeg: number;
-  halfHeightDeg: number;
-  rotationDeg: number;
-}
+export type StormPlacement = WeatherTransform;
 
 const METRES_PER_DEG_LAT = 111_320;
 
@@ -31,67 +26,51 @@ function metresPerDegLng(lat: number): number {
 }
 
 /**
- * Default placement: a footprint matching the storm's true ground size,
- * centred on the current map view.
+ * Default placement: a footprint matching the storm's true ground size.
+ * Centered on the storm's own recorded geographic origin (where the source
+ * rasters actually were) when the upload captured one; otherwise falls back
+ * to whatever center the caller supplies (e.g. the current map view).
  */
 export function defaultStormPlacement(
   storm: StormSummary,
-  centerLng: number,
-  centerLat: number,
+  fallbackCenterLng: number,
+  fallbackCenterLat: number,
 ): StormPlacement {
   const widthM = storm.grid_cols * storm.cell_size_m;
   const heightM = storm.grid_rows * storm.cell_size_m;
 
-  const halfWidthDeg = widthM / 2 / metresPerDegLng(centerLat);
-  const halfHeightDeg = heightM / 2 / METRES_PER_DEG_LAT;
+  const centerLng = storm.center_lng ?? fallbackCenterLng;
+  const centerLat = storm.center_lat ?? fallbackCenterLat;
 
   return {
     centerLng,
     centerLat,
-    halfWidthDeg,
-    halfHeightDeg,
+    halfW: widthM / 2 / metresPerDegLng(centerLat),
+    halfH: heightM / 2 / METRES_PER_DEG_LAT,
     rotationDeg: 0,
   };
 }
 
 /**
- * Convert a StormPlacement into the geometry ring + placement block stored on
- * the feature. The ring is an axis-aligned (or rotated) rectangle so the storm
- * shows up as a normal polygon on the map and can be edited; the placement
- * block is what the worker actually uses.
+ * Build a GeoJSON Feature for a picked storm: geometry is the placement
+ * footprint (a rotated rectangle, purely for the "Drawn Elements" area calc
+ * and as a fallback outline), properties carry the storm_ref + placement the
+ * accumulated-rain bitmap and (eventually) the solver read from.
  */
 export function placementToFeature(
   stormRef: string,
   p: StormPlacement,
-): {
-  _type: "storm";
-  storm_ref: string;
-  placement: StormPlacement;
-  _ring: [number, number][];
-} {
-  const { centerLng, centerLat, halfWidthDeg, halfHeightDeg, rotationDeg } = p;
-  const rad = (rotationDeg * Math.PI) / 180;
-  const cos = Math.cos(rad);
-  const sin = Math.sin(rad);
-
-  const corners: [number, number][] = [
-    [-halfWidthDeg, -halfHeightDeg],
-    [-halfWidthDeg, halfHeightDeg],
-    [halfWidthDeg, halfHeightDeg],
-    [halfWidthDeg, -halfHeightDeg],
-  ];
-
-  const ring = corners.map(([dx, dy]) => {
-    const rx = dx * cos + dy * sin;
-    const ry = -dx * sin + dy * cos;
-    return [centerLng + rx, centerLat + ry] as [number, number];
-  });
-  ring.push(ring[0]); // close
+): Feature<Polygon> {
+  const corners = transformToCorners(p);
+  const ring = [...corners, corners[0]];
 
   return {
-    _type: "storm",
-    storm_ref: stormRef,
-    placement: p,
-    _ring: ring,
+    type: "Feature",
+    geometry: { type: "Polygon", coordinates: [ring] },
+    properties: {
+      _type: "storm",
+      storm_ref: stormRef,
+      placement: p,
+    },
   };
 }

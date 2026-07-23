@@ -16,6 +16,7 @@ import {
   deleteInstance,
   type InstanceSummary,
 } from "../utils/api";
+import { AddStormModal } from "../components/AddStormModal";
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
@@ -41,6 +42,9 @@ export default function InstanceList() {
   const [newName, setNewName] = useState("");
   const [newDesc, setNewDesc] = useState("");
   const [creating, setCreating] = useState(false);
+
+  // Add-storm modal
+  const [showAddStorm, setShowAddStorm] = useState(false);
 
   // Inline rename
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -129,12 +133,20 @@ export default function InstanceList() {
               Open one to edit its setup, or start a new simulation.
             </p>
           </div>
-          <button
-            onClick={() => setShowNew((s) => !s)}
-            className="rounded-md px-4 py-2 text-sm font-semibold bg-accent text-[#0a0e17] hover:bg-[#4ea8eb] transition"
-          >
-            + New simulation
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowAddStorm(true)}
+              className="rounded-md px-4 py-2 text-sm font-semibold border border-white/15 text-white/80 hover:bg-white/5 transition"
+            >
+              🌧 Add storm
+            </button>
+            <button
+              onClick={() => setShowNew((s) => !s)}
+              className="rounded-md px-4 py-2 text-sm font-semibold bg-accent text-[#0a0e17] hover:bg-[#4ea8eb] transition"
+            >
+              + New simulation
+            </button>
+          </div>
         </div>
 
         {/* New-instance form */}
@@ -308,6 +320,13 @@ export default function InstanceList() {
           </div>
         )}
       </main>
+
+      {showAddStorm && (
+        <AddStormModal
+          onCreated={() => {}}
+          onClose={() => setShowAddStorm(false)}
+        />
+      )}
     </div>
   );
 }

@@ -91,12 +91,15 @@ export function usePolygonDraw() {
   const handleClick = useCallback(
     (info: any, _event: any) => {
       if (!isDrawing) {
-        // Click on empty space → deselect
+        // Click on empty space → deselect. Storm layers (their own onClick
+        // already selects the storm) are excluded so this fallback doesn't
+        // immediately undo that selection.
         if (
           !info.layer ||
           (info.layer.id !== "draw-completed-fill" &&
             info.layer.id !== "draw-active-edges" &&
-            !info.layer.id.startsWith("edit-"))
+            !info.layer.id.startsWith("edit-") &&
+            !info.layer.id.startsWith("storm-"))
         ) {
           simActions.setSelectedFeatureIndex(null);
           simActions.setSelectedEdgeIndex(null);
@@ -167,26 +170,40 @@ export function usePolygonDraw() {
   }, [features, selectedFeatureIndex, hasEdgeEditing]);
 
   /* ── DeckGL Layers ─────────────────────────── */
+
+  // Storms are rendered entirely by useStormOverlay (accumulated-rain bitmap
+  // + its own gizmo) — they carry a placement rectangle as geometry only so
+  // turf.area/serialize round-trip, not to be drawn as a generic polygon.
+  // origIdx keeps selection/click handlers pointed at the right index in the
+  // full (unfiltered) features array.
+  const drawableFeatures = useMemo(
+    () =>
+      features.features
+        .map((feature, origIdx) => ({ feature, origIdx }))
+        .filter((d) => d.feature.properties?._type !== "storm"),
+    [features.features],
+  );
+
   const drawLayers = useMemo(() => {
     const result: any[] = [];
 
     /* ─ Completed polygons ─ */
-    if (features.features.length > 0) {
+    if (drawableFeatures.length > 0) {
       result.push(
         new SolidPolygonLayer({
           id: "draw-completed-fill",
-          data: features.features,
-          getPolygon: (d: any) => d.geometry.coordinates[0],
-          getFillColor: (d: any, { index }: { index: number }) =>
-            index === selectedFeatureIndex
-              ? typeColor(d.properties?._type, "fillSelected")
-              : typeColor(d.properties?._type, "fill"),
+          data: drawableFeatures,
+          getPolygon: (d: any) => d.feature.geometry.coordinates[0],
+          getFillColor: (d: any) =>
+            d.origIdx === selectedFeatureIndex
+              ? typeColor(d.feature.properties?._type, "fillSelected")
+              : typeColor(d.feature.properties?._type, "fill"),
           pickable: !isDrawing,
           autoHighlight: !isDrawing,
           highlightColor: [255, 255, 255, 20],
           onClick: (info: any) => {
-            if (info.index !== -1) {
-              simActions.setSelectedFeatureIndex(info.index);
+            if (info.object) {
+              simActions.setSelectedFeatureIndex(info.object.origIdx);
               return true;
             }
           },
@@ -198,9 +215,9 @@ export function usePolygonDraw() {
       result.push(
         new PathLayer({
           id: "draw-completed-borders",
-          data: features.features,
-          getPath: (d: any) => d.geometry.coordinates[0],
-          getColor: (d: any) => typeColor(d.properties?._type, "stroke"),
+          data: drawableFeatures,
+          getPath: (d: any) => d.feature.geometry.coordinates[0],
+          getColor: (d: any) => typeColor(d.feature.properties?._type, "stroke"),
           getWidth: 2,
           widthUnits: "pixels" as const,
           pickable: false,
@@ -311,7 +328,7 @@ export function usePolygonDraw() {
 
     return result;
   }, [
-    features,
+    drawableFeatures,
     isDrawing,
     activeType,
     points,

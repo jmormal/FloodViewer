@@ -28,6 +28,7 @@ import { theme } from "../config/theme";
 import { usePolygonDraw } from "../hooks/usePolygonDraw";
 import { SimulationPanel } from "./SimulationPanel";
 import { usePolygonEdit } from "../hooks/usePolygonEdit";
+import { useStormOverlay } from "../hooks/useStormOverlay";
 
 import {
   fetchWeatherGrid,
@@ -93,6 +94,7 @@ export function FloodMap() {
   const { isDrawing } = useSimulationState();
 
   const { editLayers, isDraggingVertex } = usePolygonEdit();
+  const { stormLayers, isStormActive, isDraggingStorm } = useStormOverlay();
   const [initialView, setInitialView] = useState(theme.defaultView);
 
   useEffect(() => {
@@ -411,9 +413,9 @@ export function FloodMap() {
         },
         updateTriggers: { getFillColor: [currentFrame, activeProperty] },
         opacity,
-        // disable picking while transforming the weather overlay so clicks
-        // don't fall through to triangle selection
-        pickable: !isDrawing && !(transformActive && shiftHeld),
+        // disable picking while transforming the weather/storm overlay so
+        // clicks don't fall through to triangle selection
+        pickable: !isDrawing && !(transformActive && shiftHeld) && !isStormActive,
         extruded: false,
         material: false,
         parameters: { depthTest: false },
@@ -431,14 +433,15 @@ export function FloodMap() {
     isDrawing,
     transformActive,
     shiftHeld,
+    isStormActive,
     showSolution,
     setSelectedTriangle,
   ]);
 
-  /* ── Combined layers (weather → flood → draw → edit) ── */
+  /* ── Combined layers (weather → storm → draw → edit → flood) ── */
   const layers = useMemo(
-    () => [...weatherLayers, ...drawLayers, ...editLayers, ...floodLayers],
-    [weatherLayers, floodLayers, drawLayers, editLayers],
+    () => [...weatherLayers, ...stormLayers, ...drawLayers, ...editLayers, ...floodLayers],
+    [weatherLayers, stormLayers, floodLayers, drawLayers, editLayers],
   );
 
   /* ── Tooltip ───────────────────────────────── */
@@ -464,11 +467,12 @@ export function FloodMap() {
   const getCursor = useCallback(
     ({ isDragging }: { isDragging: boolean }) => {
       if (transformActive && shiftHeld) return dragging ? "grabbing" : "move";
+      if (isStormActive) return isDraggingStorm ? "grabbing" : "move";
       if (isDrawing) return "crosshair";
       if (isDragging) return "grabbing";
       return "grab";
     },
-    [isDrawing, transformActive, shiftHeld, dragging],
+    [isDrawing, transformActive, shiftHeld, dragging, isStormActive, isDraggingStorm],
   );
 
   /* ── Weather legend (stretched to live min/max) ── */
@@ -630,9 +634,9 @@ export function FloodMap() {
         getCursor={getCursor}
         controller={{
           doubleClickZoom: !isDrawing,
-          // lock the map while dragging a vertex OR transforming the overlay
-          dragPan: !isDraggingVertex && !(transformActive && shiftHeld),
-          dragRotate: !(transformActive && shiftHeld),
+          // lock the map while dragging a vertex OR transforming an overlay
+          dragPan: !isDraggingVertex && !(transformActive && shiftHeld) && !isStormActive,
+          dragRotate: !(transformActive && shiftHeld) && !isStormActive,
         }}
         onClick={drawClick}
         onHover={drawHover}

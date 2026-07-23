@@ -18,7 +18,8 @@
 import type { Feature, FeatureCollection } from "geojson";
 import { POLYGON_TYPES } from "../config/polygonTypes";
 import { defaultSimConfig } from "../config/simulationConfig";
-import type { SimulationPayload, FeaturePayload } from "./serialize";
+import type { SimulationPayload, FeaturePayload, StormPayload } from "./serialize";
+import { placementToFeature } from "./stormPlacement";
 
 /** Set of code-typed property keys for a given polygon type. */
 function codeKeysForType(typeKey: string): Set<string> {
@@ -77,6 +78,16 @@ export function deserializePayload(payload: SimulationPayload | null): {
 
   if (payload?.features) {
     for (const [typeKey, list] of Object.entries(payload.features)) {
+      // Storms carry no geometry/properties/edges of their own — the ring is
+      // rebuilt from the placement transform (mirrors serializePayload's
+      // storm branch, which only ever emits {storm_ref, placement}).
+      if (typeKey === "storm") {
+        for (const item of list as StormPayload[]) {
+          features.push(placementToFeature(item.storm_ref, item.placement));
+        }
+        continue;
+      }
+
       for (const item of list as FeaturePayload[]) {
         features.push({
           type: "Feature",

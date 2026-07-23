@@ -79,8 +79,12 @@ const initialState: SimulationState = {
 /* ── Helpers ──────────────────────────────────── */
 
 function calcArea(fc: { features: any[] }): number | null {
-  if (fc.features.length === 0) return null;
-  return Math.round(turf.area(fc as any) * 100) / 100;
+  // Storms carry a placement rectangle as geometry (so it can be redrawn on
+  // reload), but that's not part of the simulated domain — exclude it from
+  // the "Drawn Elements" area total.
+  const regionish = fc.features.filter((f) => f.properties?._type !== "storm");
+  if (regionish.length === 0) return null;
+  return Math.round(turf.area({ type: "FeatureCollection", features: regionish } as any) * 100) / 100;
 }
 
 function initEdgeDefaults(feature: Feature): Feature {
